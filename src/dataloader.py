@@ -4,6 +4,7 @@ import os, sys
 
 from bagpy import bagreader
 import logging
+from os.path import join
 
 class dataloader:
 
@@ -18,9 +19,13 @@ class dataloader:
     
     def loadCase(self, case):
         for folder in os.listdir(os.path.join(self.folder,case)):
+            folder = join(join(self.folder,case),folder)
             logging.info(f"Parsing {folder}")
-            bagfile = os.path.join(folder,"rosbag.bag")
-            
+            csvfile = os.path.join(folder,"csv")
+            self.parseBagCSV(csvfile)
+    
+    def parseBagCSV(self, file)
+                    
     def runPipeline(self):
         for case in self.cases:
             self.loadCase(case)
