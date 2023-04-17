@@ -1,0 +1,6 @@
+[submodule "submodules/blackbird"]
+	path = submodules/blackbird
+	url = https://github.com/mit-aera/Blackbird-Dataset
+[submodule "dataset/blackbird"]
+	path = dataset/blackbird
+	url = https://github.com/mit-aera/Blackbird-Dataset
