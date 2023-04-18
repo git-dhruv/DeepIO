@@ -69,7 +69,7 @@ class dataloader:
 
                     
     def runPipeline(self):
-        for case in tqdm.tqdm(self.cases):
+        for case in tqdm(self.cases):
             self.loadCase(case)
         return self.imu_data,self.rotor_data,self.mocap_data
             
