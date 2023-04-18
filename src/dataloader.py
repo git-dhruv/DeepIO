@@ -11,6 +11,7 @@ import os, sys
 from bagpy import bagreader
 import logging
 from os.path import join
+from tqdm import tqdm
 
 class dataloader:
 
@@ -20,15 +21,16 @@ class dataloader:
         self.imu_data = None
         self.rotor_data = None
         self.mocap_data = None
-        self.setupLogging()        
+        self.setupLogging() 
+        logging.info("Dataloader Started")       
 
     def setupLogging(self):
-        log_format = "%(filename)s::%(lineno)d::%(message)s"
+        log_format = "[%(filename)s]%(lineno)d::%(message)s"
         logging.basicConfig(level='DEBUG', format=log_format)
     
     def loadCase(self, case):
         for folder in os.listdir(os.path.join(self.folder,case)):
-            logging.info(f"Parsing {folder}")
+            logging.info(f"Loading {folder}")
             folder = join(join(self.folder,case),folder)
             bagfile = os.path.join(folder,"rosbag.bag")
             imu,rotor,mocap = self.parseBagFile(bagfile)
@@ -67,7 +69,7 @@ class dataloader:
 
                     
     def runPipeline(self):
-        for case in self.cases:
+        for case in tqdm.tqdm(self.cases):
             self.loadCase(case)
         return self.imu_data,self.rotor_data,self.mocap_data
             
@@ -75,6 +77,4 @@ class dataloader:
 
 
 if __name__ == "__main__":
-    tmp = dataloader("../data/clover")
-    tmp.runPipeline()
-        
+    print("Kindly Check dataloader_demo.ipynb for demo")
