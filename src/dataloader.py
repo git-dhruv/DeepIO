@@ -21,6 +21,7 @@ class dataloader:
         self.imu_data = None
         self.rotor_data = None
         self.mocap_data = None
+        
         self.setupLogging() 
         logging.info("Dataloader Started")       
 
@@ -49,10 +50,10 @@ class dataloader:
         mocap_topic = '/blackbird/state'
         relevant_topics = [imu_topic,rpm_topic,mocap_topic]
 
-        relevant_headers = [['header.stamp.nsecs', 'angular_velocity.x','angular_velocity.y',
+        relevant_headers = [['Time', 'angular_velocity.x','angular_velocity.y',
                              'angular_velocity.z','linear_acceleration.x','linear_acceleration.y','linear_acceleration.z'],
-                             ['header.stamp.nsecs','rpm_0','rpm_1','rpm_2','rpm_3'],
-                             ['header.stamp.nsecs','pose.position.x','pose.position.y','pose.position.z','pose.orientation.x','pose.orientation.y','pose.orientation.z',
+                             ['Time','rpm_0','rpm_1','rpm_2','rpm_3'],
+                             ['Time','pose.position.x','pose.position.y','pose.position.z','pose.orientation.x','pose.orientation.y','pose.orientation.z',
                               'pose.orientation.w']]
         csvfiles = []
 
