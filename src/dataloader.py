@@ -94,6 +94,8 @@ class dataloader:
             rotorcopy, how='outer').join(mocapcopy, how='outer')
         self.ConcatData.interpolate(method='linear', inplace=True)
         self.ConcatData.fillna(method='bfill', inplace=True)
+        self.ConcatData['Time'] = self.ConcatData.index
+        self.ConcatData.reset_index(drop=True, inplace=True)
 
 
 if __name__ == "__main__":
