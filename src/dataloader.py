@@ -13,6 +13,7 @@ from bagpy import bagreader
 import logging
 from os.path import join
 from tqdm import tqdm
+from utils import *
 
 
 class dataloader:
@@ -24,6 +25,7 @@ class dataloader:
         self.imu_data = None
         self.rotor_data = None
         self.mocap_data = None
+        self.ConcatData = None
         self.setupLogging()
         logging.info("Dataloader Started")
 
@@ -96,6 +98,48 @@ class dataloader:
         self.ConcatData.fillna(method='bfill', inplace=True)
         self.ConcatData['Time'] = self.ConcatData.index
         self.ConcatData.reset_index(drop=True, inplace=True)
+
+    def perturbStates(self, pos_noise=np.diag([0.0225, 0.0225, 0.0025]), orientation_noise=np.diag([0.1, 0.1, 0.1])):
+        """
+        This function will perturb the states by adding noise to the states.
+        Inputs:
+            - pos_noise: 3x3 covariance matrix for position noise
+            - orientation_noise: 3x3 covariance matrix for orientation noise
+        Outputs:
+            - States a nx8 matrix with the following columns: Time, x, y, z, qw, qx, qy, qz
+        """
+        if self.ConcatData is None:
+            self.homogenizeData()
+
+        time = self.ConcatData['Time'].to_numpy()
+        pos = self.ConcatData[['pose.position.x',
+                               'pose.position.y', 'pose.position.z']].to_numpy()
+
+        axis_angles = []
+        for i in range(len(self.ConcatData)):
+            quat = Quaternion(scalar=self.ConcatData['pose.orientation.w'][i], vec=np.array(
+                [self.ConcatData['pose.orientation.x'][i], self.ConcatData['pose.orientation.y'][i], self.ConcatData['pose.orientation.z'][i]]))
+            axis_angles.append(quat.axis_angle())
+
+        # Add noise
+        pos_noise = np.random.multivariate_normal(
+            np.zeros(3), pos_noise, len(self.ConcatData))
+        orientation_noise = np.random.multivariate_normal(
+            np.zeros(3), orientation_noise, len(self.ConcatData))
+        pos = pos + pos_noise
+        axis_angles = np.array(axis_angles) + orientation_noise
+
+        perturbed_quats = []
+        for i in range(len(self.ConcatData)):
+            quat = Quaternion()
+            quat.from_axis_angle(axis_angles[i])
+            perturbed_quats.append(quat.q)
+        perturbed_quats = np.array(perturbed_quats)
+
+        data = np.vstack([time, pos[:, 0], pos[:, 1], pos[:, 2], perturbed_quats[:, 0],
+                         perturbed_quats[:, 1], perturbed_quats[:, 2], perturbed_quats[:, 3]]).T
+
+        return data
 
 
 if __name__ == "__main__":
