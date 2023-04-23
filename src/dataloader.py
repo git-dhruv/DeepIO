@@ -57,6 +57,7 @@ class dataloader:
         mocap_topic = '/blackbird/state'
         relevant_topics = [imu_topic, rpm_topic, mocap_topic]
 
+
         relevant_headers = [['Time', 'angular_velocity.x', 'angular_velocity.y',
                              'angular_velocity.z', 'linear_acceleration.x', 'linear_acceleration.y', 'linear_acceleration.z'],
                             ['Time', 'rpm_0', 'rpm_1', 'rpm_2', 'rpm_3'],
