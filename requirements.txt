@@ -9,3 +9,4 @@ tf>=1.0.0
 tqdm>=4.45.0
 pathlib>=1.0.1
 wget>=3.2
+bagpy >= 0.5
