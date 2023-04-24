@@ -22,13 +22,15 @@ class dynamics:
         # propHeight: 0.023
 
     def propogateDynamics(self,x,omega, dt):
-        #state vector -> [x,xdot,quats,omega,biases]
+        #state vector -> [x,xdot,quats,biases]
         F,_ = self.rpmConversions(omega.flatten())
         R_b_w = Rotation.from_quat(x[6:10]).as_matrix()
         acc = np.array([0,0,self.m*self.G]).reshape(-1,1) + R_b_w@np.array([0,0,np.sum(F)]).reshape(-1,1)
-        x[3:6] += (acc*dt).flatten()
-        x[:3] += x[3:6]*dt
-        x[10:] = 0
+        
+        #Quats and biases remain the same
+        x[3:6] += (acc*dt).flatten() #Velocities
+        x[:3] += x[3:6]*dt           #Position
+        
         return x
 
     def rpmConversions(self,omega):    
