@@ -142,6 +142,24 @@ class dataloader:
 
         return data
 
+    def convertDataToIndividualNumpy(self):
+        """
+        Elegance 
+        """
+        if self.ConcatData is None:
+            self.homogenizeData()
+        gx,gy,gz = self.ConcatData['angular_velocity.x'].to_numpy(),self.ConcatData['angular_velocity.y'].to_numpy(),self.ConcatData['angular_velocity.z'].to_numpy()
+        ax,ay,az = self.ConcatData['linear_acceleration.x'].to_numpy(),self.ConcatData['linear_acceleration.y'].to_numpy(),self.ConcatData['linear_acceleration.z'].to_numpy()
+        mcapx,mcapy,mcapz = self.ConcatData['pose.position.x'].to_numpy(),self.ConcatData['pose.position.y'].to_numpy(),self.ConcatData['pose.position.z'].to_numpy()
+        rpm0, rpm1, rpm2, rpm3 = self.ConcatData['rpm_0'].to_numpy(), self.ConcatData['rpm_1'].to_numpy(), self.ConcatData['rpm_2'].to_numpy(), self.ConcatData['rpm_3'].to_numpy()
+        q0,q1,q2,q3 = self.ConcatData['pose.orientation.w'].to_numpy(),self.ConcatData['pose.orientation.x'].to_numpy(),self.ConcatData['pose.orientation.y'].to_numpy(),self.ConcatData['pose.orientation.z'].to_numpy()
+        t = self.ConcatData['Time']
+        q = np.vstack((q0,np.vstack(q1,(np.vstack((q2,q3))))))  #Bracket madness
+        acc = np.vstack((ax,np.vstack(ay,az)))
+        gyro = np.vstack((gx,np.vstack(gy,gz)))
+        rpm = np.vstack((rpm0,np.vstack(rpm1,(np.vstack((rpm2,rpm3))))))
+        mocap = np.vstack((mcapx,np.vstack(mcapy,mcapz)))
+        return gyro,acc,rpm,mocap,t
 
 if __name__ == "__main__":
     print("Kindly Check dataloader_demo.ipynb for demo")

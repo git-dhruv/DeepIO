@@ -2,6 +2,16 @@
 @author: Anirudh Kailaje, Dhruv Parikh
 @date: 4/24/2023
 @Description: Not Defined
+Great way to document
+
+
+(['angular_velocity.x', 'angular_velocity.y', 'angular_velocity.z',
+'linear_acceleration.x', 'linear_acceleration.y',
+'linear_acceleration.z', 'rpm_0', 'rpm_1', 'rpm_2', 'rpm_3',
+'pose.position.x', 'pose.position.y', 'pose.position.z',
+'pose.orientation.x', 'pose.orientation.y', 'pose.orientation.z',
+'pose.orientation.w', 'Time']
+
 """
 import numpy as np
 import matplotlib.pyplot as plt
@@ -63,6 +73,7 @@ class OnlineLearingFusion:
         R_imu_to_ned = np.array([[-1,0,0],
                                 [0,-1,0],
                                 [0,0,1]])
+        
         #2. Run through the Loop
             #3. Propogate Step
             #4. Measurement Update
