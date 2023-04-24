@@ -25,7 +25,7 @@ class OnlineLearingFusion:
         """
         Standard Multi Sensor Fusion Parameters
         """
-        self.state = np.zeros((16, 1))
+        self.state = np.zeros((15, 1))
         self.covariance = np.zeros((16, 16))
         self.Q = np.zeros((7, 7))
         self.R = np.zeros_like(self.covariance)
@@ -43,7 +43,9 @@ class OnlineLearingFusion:
 
     def calcJacobian(self, dt, measurment=1):
         if measurment:
-            # self.MeasurmentJacobian =
+            self.MeasurmentJacobian = np.zeros((15, 15))
+            self.MeasurmentJacobian[6:9, 6:9] = np.eye(3)
+            self.MeasurmentJacobian[0:3, 0:3] = np.eye(3)
             return self.MeasurmentJacobian
         else:
             jacobian = np.eye(15, 15)
