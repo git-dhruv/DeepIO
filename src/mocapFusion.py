@@ -72,9 +72,6 @@ class OnlineLearingFusion:
             jacobian[3:6, 7] = dF_dtheta.flatten()
             jacobian[3:6, 8] = dF_dphi.flatten()
 
-            fig = plt.figure()
-            plt.imshow(jacobian)
-            plt.show()
             self.PropogationJacobian = jacobian
             return self.PropogationJacobian
 
