@@ -1,3 +1,8 @@
+"""
+@author: Anirudh Kailaje, Dhruv Parikh
+@date: 4/24/2023
+@Description: Not Defined
+"""
 import numpy as np
 import matplotlib.pyplot as plt
 from dataloader import *
@@ -21,4 +26,7 @@ class OnlineLearingFusion:
         raise NotImplementedError
     
     def runPipeline(self):
+        raise NotImplementedError
+    
+    def plotSampleOutput(self):
         raise NotImplementedError
