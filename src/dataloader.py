@@ -164,7 +164,7 @@ class dataloader:
         gyro = np.vstack((gx, np.vstack(gy, gz)))
         rpm = np.vstack((rpm0, np.vstack(rpm1, (np.vstack((rpm2, rpm3))))))
         mocap = np.vstack((mcapx, np.vstack(mcapy, mcapz)))
-        return gyro, acc, rpm, mocap, t
+        return gyro, acc, rpm, mocap, q, t
 
 
 if __name__ == "__main__":
