@@ -95,10 +95,20 @@ class OnlineLearingFusion:
         R_imu_to_ned = np.array([[-1, 0, 0],
                                 [0, -1, 0],
                                 [0, 0, 1]])
+        R_imutoBody= np.array([[0, -1, 0],
+             [1, 0, 0],
+             [0,0,1]])
+        gyro, acc, rpm, mocap, q, t = loadDataUtil.convertDataToIndividualNumpy()
+        mocap[:3] = R_imutoBody @ mocap[:3]
+        for i in range(q.shape[1]):
+            shit = R_imutoBody@Rotation.from_quat(q[:,i]).as_matrix()
+            q[:,i] = Rotation.from_matrix(shit).as_quat().flatten()
 
-        j = self.calcJacobian(dt=0.1, measurment=0)
-
+    
         # 2. Run through the Loop
+        for i in range(q.shape[1]):
+            self.propogateStep()
+            
         # 3. Propogate Step
         # 4. Measurement Update
         # Return all the state vectors
