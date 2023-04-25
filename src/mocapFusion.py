@@ -27,8 +27,8 @@ class OnlineLearingFusion:
         """
         self.state = np.zeros((15, 1))
         self.covariance = np.zeros((16, 16))
-        self.Q = np.zeros((7, 7))
-        self.R = np.zeros_like(self.covariance)
+        self.R = np.zeros((7, 7))
+        self.Q = np.zeros_like(self.covariance)
 
         self.PropogationJacobian = None
         self.MeasurmentJacobian = None
@@ -78,12 +78,26 @@ class OnlineLearingFusion:
             return self.PropogationJacobian
 
     def propogateStep(self, state, rpm, dt):
-        self.calcJacobian(dt, measurment=0)
+        J = self.calcJacobian(dt, measurment=0)
         self.state = self.dynamics.propogateDynamics(state, rpm, dt)
-        self.covariance = self.PropogationJacobian@self.covariance@self.PropogationJacobian.T + self.R
+        self.covariance = J@self.covariance@J.T + self.Q
+
+    def measurementModel(self):
+        #Rotation of IMU wrt NED
+        R = Rotation.from_euler('xyz',self.state[9:12].flatten())
+        #Rotation of NED wrt imu
+        R = R.T
+        gyro = R@self.state[12:15].reshape(-1,1) 
+        acc = R@self.state[6:9].reshape(-1,1)
+        return np.vstack((acc,gyro))
 
     def measurmentStep(self, measurments, dt):        
-        G = self.calcJacobian(dt, measurment=1)
+        y = measurments - self.measurmentModel()
+        H = self.calcJacobian(dt,measurment=1)
+        S = H@self.covariance@H.T + self.R
+        K = self.covariance@H.T@np.linalg.inv(S)
+        self.state = self.state + K@y
+        self.covariance = (np.eye() - K@H)@self.covariance
 
     def runPipeline(self):
         ##--Load the Data--##
@@ -114,8 +128,8 @@ class OnlineLearingFusion:
         for i in range(1,q.shape[1]):
             dt = t[i] - t[i-1]
             self.propogateStep(self.state,rpm[:,i],dt)
-            measurementPacket = np.array([float(gyro[0,i]),float(gyro[1,i]),float(gyro[2,i]),
-                                          float(acc[0,i]),float(acc[1,i]),float(acc[2,i])])
+            measurementPacket = np.array([float(acc[0,i]),float(acc[1,i]),float(acc[2,i]),
+                                          float(gyro[0,i]),float(gyro[1,i]),float(gyro[2,i])])
             self.measurmentStep(measurementPacket, dt)
         return self.state
 
