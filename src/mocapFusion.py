@@ -1,8 +1,7 @@
 """
 @author: Anirudh Kailaje, Dhruv Parikh
 @date: 4/24/2023
-@Description: Not Defined
-Great way to document
+@Description: EKF for quadrotor state estimation by fusing IMU and Motion Capture Data
 
 
 (['angular_velocity.x', 'angular_velocity.y', 'angular_velocity.z',
@@ -24,6 +23,7 @@ class OnlineLearingFusion:
     def __init__(self):
         """
         Standard Multi Sensor Fusion Parameters
+            - self.state: State of the quadrotor defined as [x, y, z, vx, vy, vz, ax, ay, az, psi, theta, phi, p, q, r, bax, bay, baz, bwx, bwy, bwz]
         """
         self.state = np.zeros((21, 1))
         self.covariance = np.zeros((21, 21))
@@ -48,6 +48,15 @@ class OnlineLearingFusion:
         """
 
     def calcJacobian(self, dt, measurment=1, omega = np.zeros(4)):
+        """
+        Returns the desired jacobian for the EKF
+        Inputs:
+            - dt: Time Step
+            - measurment: 1 for IMU, 2 for Motion Capture, Dynamics otherwise
+            - omega: motor speeds of the quadrotor
+        Outputs:
+            - None; Computes the jacobian and stores it in the class in self.MeasurmentJacobian or self.PropogationJacobian
+        """
         psi, theta, phi = self.state[6:9].flatten()
         Rdot_phi = np.array([[-sin(phi)*cos(theta), -cos(phi)*cos(psi)-sin(phi)*sin(theta)*sin(psi), cos(phi)*sin(psi)-sin(phi)*sin(theta)*cos(psi)],
                                     [cos(phi)*cos(theta), -sin(phi)*cos(psi)+cos(phi)*sin(theta)
@@ -62,7 +71,7 @@ class OnlineLearingFusion:
                                 cos(phi)*cos(psi) - sin(phi)*sin(theta)*sin(psi)],
                                 [0,                              cos(theta)*cos(psi), -cos(theta)*sin(psi)]])
         
-        if measurment:
+        if measurment == 1: #Returns the meassurement jacobian for the IMU 
             self.MeasurmentJacobian = np.zeros((6, 21))
             dg_dpsi = Rdot_psi.T @ self.state[6:9].reshape(-1,1)
             dg_dtheta = Rdot_theta.T @ self.state[6:9].reshape(-1,1)
@@ -92,7 +101,14 @@ class OnlineLearingFusion:
             self.MeasurmentJacobian[3:6, 19] = dg_dtheta.flatten()
             self.MeasurmentJacobian[3:6, 20] = dg_dphi.flatten()
             return self.MeasurmentJacobian
-        else:
+        
+        elif measurment == 2: #Returns measurement jacobian for motion capture input
+            self.MeasurmentJacobian = np.zeros((6, 21))
+            self.MeasurmentJacobian[0:3, 0:3] = np.eye(3)
+            self.MeasurmentJacobian[3:6, 9:12] = np.eye(3)
+            return self.MeasurmentJacobian
+
+        else: #Returns the dynamics Jacobian
             u, _ = self.dynamics.rpmConversions(omega.flatten())
             jacobian = np.zeros((21, 21))
             jacobian[0:3, 0:3] = np.eye(3)
@@ -142,7 +158,7 @@ class OnlineLearingFusion:
 
     def runPipeline(self):
         ##--Load the Data--##
-        dataDir = r'/Users/dhruv/Desktop/Penn/Sem2/ESE650/FinalProject/DeepIO/data/clover'
+        dataDir = r'C:\Users\aniru\Documents\01_UPenn\04_ESE6500\02_Homework\05_Project\DeepIO\data\clover'
         loadDataUtil = dataloader(dataDir)
         loadDataUtil.runPipeline()
         loadDataUtil.homogenizeData()
