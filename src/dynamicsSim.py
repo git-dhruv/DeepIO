@@ -28,9 +28,9 @@ class dynamics:
         R_b_w = Rotation.from_euler('xyz', x[9:12].flatten()).as_matrix()
         acc = np.array([0, 0, self.m*self.G]).reshape(-1, 1) + \
             R_b_w@np.array([0, 0, np.sum(-F)]).reshape(-1, 1)    
-        x[3:6] += (acc*dt).flatten()  # Velocities
+        x[3:6] += (acc*dt)  # Velocities
         x[:3] += x[3:6]*dt  # Position
-        x[6:9] = acc.flatten()  #Accelerations
+        x[6:9] = acc  #Accelerations
         x[9:12] += x[12:15]*dt #Angles
         #Angular Velocities, Biases will remain the same
         return x

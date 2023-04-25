@@ -159,11 +159,11 @@ class dataloader:
         ), self.ConcatData['pose.orientation.y'].to_numpy(), self.ConcatData['pose.orientation.z'].to_numpy()
         t = self.ConcatData['Time']
         # Bracket madness
-        q = np.vstack((q1, np.vstack(q2, (np.vstack((q3, q0))))))
-        acc = np.vstack((ax, np.vstack(ay, az)))
-        gyro = np.vstack((gx, np.vstack(gy, gz)))
-        rpm = np.vstack((rpm0, np.vstack(rpm1, (np.vstack((rpm2, rpm3))))))
-        mocap = np.vstack((mcapx, np.vstack(mcapy, mcapz)))
+        q = np.vstack((q1, np.vstack((q2, np.vstack((q3, q0))))))
+        acc = np.vstack((ax, np.vstack((ay, az))))
+        gyro = np.vstack((gx, np.vstack((gy, gz))))
+        rpm = np.vstack((rpm0, np.vstack((rpm1, (np.vstack((rpm2, rpm3)))))))
+        mocap = np.vstack((mcapx, np.vstack((mcapy, mcapz))))
         return gyro, acc, rpm, mocap, q, t
 
 

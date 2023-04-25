@@ -42,6 +42,7 @@ class OnlineLearingFusion:
         """
 
     def calcJacobian(self, dt, measurment=1, omega = np.zeros(4)):
+        psi, theta, phi = self.state[6:9].flatten()
         Rdot_phi = np.array([[-sin(phi)*cos(theta), -cos(phi)*cos(psi)-sin(phi)*sin(theta)*sin(psi), cos(phi)*sin(psi)-sin(phi)*sin(theta)*cos(psi)],
                                     [cos(phi)*cos(theta), -sin(phi)*cos(psi)+cos(phi)*sin(theta)
                                     * sin(psi), sin(phi)*sin(psi)+cos(phi)*sin(theta)*cos(psi)],
@@ -77,7 +78,7 @@ class OnlineLearingFusion:
             jacobian[0:3, 3:6] = np.eye(3)*dt
             jacobian[3:6, 3:6] = np.eye(3)
             jacobian[3:6, 6:9] = np.eye(3)*dt
-            psi, theta, phi = self.state[6:9].flatten()
+            
             
             jacobian[6:9, 9] = - Rdot_psi @ np.array([0,0, u.sum()])
             jacobian[6:9, 10] = - Rdot_theta @ np.array([0,0, u.sum()])
@@ -103,7 +104,7 @@ class OnlineLearingFusion:
         return np.vstack((acc,gyro))
 
     def measurmentStep(self, measurments, dt):        
-        y = measurments - self.measurmentModel()
+        y = measurments - self.measurementModel()
         H = self.calcJacobian(dt,measurment=1)
         S = H@self.covariance@H.T + self.R
         K = self.covariance@H.T@np.linalg.inv(S)
@@ -112,7 +113,8 @@ class OnlineLearingFusion:
 
     def runPipeline(self):
         ##--Load the Data--##
-        loadDataUtil = dataloader("..\data\clover")
+        dataDir = r'/Users/dhruv/Desktop/Penn/Sem2/ESE650/FinalProject/DeepIO/data/clover'
+        loadDataUtil = dataloader(dataDir)
         loadDataUtil.runPipeline()
         loadDataUtil.homogenizeData()
         gyro, acc, rpm, mocap, q, t = loadDataUtil.convertDataToIndividualNumpy()
@@ -132,16 +134,21 @@ class OnlineLearingFusion:
 
 
         ##--Initialization--#
-        self.state[:3] = mocap[:,0].flatten()
-        self.state[9:12] = Rotation.from_quat(q[:,0].flatten()).as_euler('xyz')
+        self.state[:3] = mocap[:,0].reshape(-1,1)
+        self.state[9:12] = Rotation.from_quat(q[:,0].flatten()).as_euler('xyz').reshape(-1,1)
 
         ##--Loop--#
+        x = []
         for i in range(1,q.shape[1]):
             dt = t[i] - t[i-1]
             self.propogateStep(self.state,rpm[:,i],dt)
             measurementPacket = np.array([float(acc[0,i]),float(acc[1,i]),float(acc[2,i]),
                                           float(gyro[0,i]),float(gyro[1,i]),float(gyro[2,i])])
             self.measurmentStep(measurementPacket, dt)
+            x.append(float(self.state[0]))
+
+        plt.plot(x); plt.show()
+
         return self.state
 
     def plotSampleOutput(self):
