@@ -106,7 +106,7 @@ class dataloader:
             - pos_noise: 3x3 covariance matrix for position noise
             - orientation_noise: 3x3 covariance matrix for orientation noise
         Outputs:
-            - States a nx8 matrix with the following columns: Time, x, y, z, qw, qx, qy, qz
+            - States a nx7 matrix with the following columns: Time, x, y, z, psi, theta, phi
         """
         if self.ConcatData is None:
             self.homogenizeData()
@@ -129,15 +129,15 @@ class dataloader:
         pos = pos + pos_noise
         axis_angles = np.array(axis_angles) + orientation_noise
 
-        perturbed_quats = []
+        perturbed_eulerangles = []
         for i in range(len(self.ConcatData)):
             quat = Quaternion()
             quat.from_axis_angle(axis_angles[i])
-            perturbed_quats.append(quat.q)
-        perturbed_quats = np.array(perturbed_quats)
+            perturbed_eulerangles.append(quat.euler_angles())
+        perturbed_eulerangles = np.array(perturbed_eulerangles)
 
-        data = np.vstack([time, pos[:, 0], pos[:, 1], pos[:, 2], perturbed_quats[:, 0],
-                         perturbed_quats[:, 1], perturbed_quats[:, 2], perturbed_quats[:, 3]]).T
+        data = np.vstack([time, pos[:, 0], pos[:, 1], pos[:, 2], perturbed_eulerangles[:, 2],
+                         perturbed_eulerangles[:, 1], perturbed_eulerangles[:, 0]]).T
 
         return data
 
