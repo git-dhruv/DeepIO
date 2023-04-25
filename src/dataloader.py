@@ -129,15 +129,15 @@ class dataloader:
         pos = pos + pos_noise
         axis_angles = np.array(axis_angles) + orientation_noise
 
-        perturbed_eulerangles = []
+        perturbed_quat = []
         for i in range(len(self.ConcatData)):
             quat = Quaternion()
             quat.from_axis_angle(axis_angles[i])
-            perturbed_eulerangles.append(quat.euler_angles())
-        perturbed_eulerangles = np.array(perturbed_eulerangles)
+            perturbed_quat.append(quat.q)
+        perturbed_quat = np.array(perturbed_quat)
 
-        data = np.vstack([time, pos[:, 0], pos[:, 1], pos[:, 2], perturbed_eulerangles[:, 2],
-                         perturbed_eulerangles[:, 1], perturbed_eulerangles[:, 0]]).T
+        data = np.vstack([time, pos[:, 0], pos[:, 1], pos[:, 2], perturbed_quat[:, 1],
+                         perturbed_quat[:, 2], perturbed_quat[:, 3], perturbed_quat[:, 0]]).T
 
         return data
 

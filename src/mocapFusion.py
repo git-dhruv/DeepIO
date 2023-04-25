@@ -27,15 +27,15 @@ class OnlineLearingFusion:
         """
         self.state = np.zeros((21, 1))
         self.covariance = np.zeros((21, 21))
-        self.R = np.eye(6,6)  #Measurement Noise
-        # self.R[-3:,-3:] += 10*np.eye(3)
+        self.R = np.eye(6,6)*100  #Measurement Noise
+        self.R[-3:,-3:] += 10*np.eye(3)
         self.Q = np.eye(self.covariance.shape[0])
         #Angles
-        self.Q[9:12,9:12] += 5*np.eye(3)
-        #Acc
-        self.Q[6:9,6:9] += 20*np.eye(3)
-        #Biases 
-        self.Q[-6:,-6:] += 10*np.eye(6)
+        # self.Q[9:12,9:12] += 5*np.eye(3)
+        # #Acc
+        # self.Q[6:9,6:9] += 20*np.eye(3)
+        # #Biases 
+        # self.Q[-6:,-6:] += 10*np.eye(6)
         self.PropogationJacobian = None
         self.MeasurmentJacobian = None
 
@@ -166,6 +166,11 @@ class OnlineLearingFusion:
         loadDataUtil.runPipeline()
         loadDataUtil.homogenizeData()
         gyro, acc, rpm, mocap, q, t = loadDataUtil.convertDataToIndividualNumpy()
+        perturbedMocap = loadDataUtil.perturbStates()[:,1:]
+        mocap = perturbedMocap[:,:3]
+        quats = perturbedMocap[:,3:]
+        
+
         
 
         ##--Rotate the Motion Capture to IMU frame from Body Frame --#
@@ -176,12 +181,12 @@ class OnlineLearingFusion:
         R_imutoBody= np.array([[0, -1, 0],
              [1, 0, 0],
              [0,0,1]])
-        mocap = R_imutoBody @ mocap
-        eulers =[]
-        for i in range(q.shape[1]):
-            shit = R_imutoBody@Rotation.from_quat(q[:,i]).as_matrix()            
-            q[:,i] = Rotation.from_matrix(shit).as_quat().flatten()
-            quat = Quaternion(scalar = q[0, i], vec = q[1:, i])
+        mocap = R_imutoBody @ mocap.T
+        eulers = []
+        for i in range(quats.shape[0]):
+            shit = R_imutoBody@Rotation.from_quat(quats[i, :]).as_matrix()
+            quats[i, :] = Rotation.from_matrix(shit).as_quat().flatten()
+            quat = Quaternion(scalar = quats[i, -1], vec = quats[i, 0:3])
             eulers.append(np.flip(quat.euler_angles()))
         eulers = np.array(eulers)
         
@@ -219,8 +224,9 @@ class OnlineLearingFusion:
             # plt.imshow(self.covariance)
             # plt.pause(0.01)
 
-        plt.plot(self.x)
+        
         plt.plot(self.quat)
+        plt.plot(self.x)
         plt.show()
 
         return self.state
