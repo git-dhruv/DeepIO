@@ -27,8 +27,8 @@ class OnlineLearingFusion:
         """
         self.state = np.zeros((21, 1))
         self.covariance = np.zeros((21, 21))
-        self.R = np.zeros((7, 7))
-        self.Q = np.zeros_like(self.covariance)
+        self.R = np.eye(6,6)*0.1  #Measurement Noise
+        self.Q = np.eye(self.covariance.shape[0]) 
 
         self.PropogationJacobian = None
         self.MeasurmentJacobian = None
@@ -96,7 +96,7 @@ class OnlineLearingFusion:
 
     def measurementModel(self):
         #Rotation of IMU wrt NED
-        R = Rotation.from_euler('xyz',self.state[9:12].flatten())
+        R = Rotation.from_euler('xyz',self.state[9:12].flatten()).as_matrix()
         #Rotation of NED wrt imu
         R = R.T
         gyro = R@self.state[12:15].reshape(-1,1) 
@@ -104,12 +104,12 @@ class OnlineLearingFusion:
         return np.vstack((acc,gyro))
 
     def measurmentStep(self, measurments, dt):        
-        y = measurments - self.measurementModel()
+        y = measurments.reshape(-1,1) - self.measurementModel()
         H = self.calcJacobian(dt,measurment=1)
         S = H@self.covariance@H.T + self.R
         K = self.covariance@H.T@np.linalg.inv(S)
         self.state = self.state + K@y
-        self.covariance = (np.eye() - K@H)@self.covariance
+        self.covariance = (np.eye(21) - K@H)@self.covariance
 
     def runPipeline(self):
         ##--Load the Data--##
@@ -136,6 +136,8 @@ class OnlineLearingFusion:
         ##--Initialization--#
         self.state[:3] = mocap[:,0].reshape(-1,1)
         self.state[9:12] = Rotation.from_quat(q[:,0].flatten()).as_euler('xyz').reshape(-1,1)
+        acc[-1,:] = acc[-1,:] - acc[-1,:20].mean()
+        print(acc[-1,:2])
 
         ##--Loop--#
         x = []
