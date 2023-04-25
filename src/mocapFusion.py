@@ -25,8 +25,8 @@ class OnlineLearingFusion:
         """
         Standard Multi Sensor Fusion Parameters
         """
-        self.state = np.zeros((15, 1))
-        self.covariance = np.zeros((16, 16))
+        self.state = np.zeros((21, 1))
+        self.covariance = np.zeros((21, 21))
         self.R = np.zeros((7, 7))
         self.Q = np.zeros_like(self.covariance)
 
@@ -41,38 +41,49 @@ class OnlineLearingFusion:
         2(q0q2 - q1q3)ax + 2(q1q2 + q0*q3)*ay + (q0^2 - q1^2 - q2^2 + q3^2)*az]
         """
 
-    def calcJacobian(self, dt, measurment=1):
+    def calcJacobian(self, dt, measurment=1, omega = np.zeros(4)):
+        Rdot_phi = np.array([[-sin(phi)*cos(theta), -cos(phi)*cos(psi)-sin(phi)*sin(theta)*sin(psi), cos(phi)*sin(psi)-sin(phi)*sin(theta)*cos(psi)],
+                                    [cos(phi)*cos(theta), -sin(phi)*cos(psi)+cos(phi)*sin(theta)
+                                    * sin(psi), sin(phi)*sin(psi)+cos(phi)*sin(theta)*cos(psi)],
+                                    [-sin(theta),                            cos(theta)*sin(psi), cos(theta)*cos(psi)]])
+        Rdot_theta = np.array([[-cos(phi)*sin(theta),                   cos(phi)*cos(theta)*sin(psi), cos(phi)*cos(theta)*cos(psi)],
+                                [-sin(phi)*sin(theta),                   sin(phi) *
+                                cos(theta)*sin(psi), sin(phi)*cos(theta)*cos(psi)],
+                                [-cos(theta),                             -sin(phi)*sin(psi), -sin(phi)*cos(psi)]])
+        Rdot_psi = np.array([[0, sin(phi)*sin(psi)+cos(phi)*sin(theta)*cos(psi), sin(phi)*cos(psi) - cos(phi)*sin(theta)*sin(psi)],
+                                [0, -cos(phi)*sin(psi)+sin(phi)*sin(theta)*cos(psi), -
+                                cos(phi)*cos(psi) - sin(phi)*sin(theta)*sin(psi)],
+                                [0,                              cos(theta)*cos(psi), -cos(theta)*sin(psi)]])
+        
         if measurment:
-            self.MeasurmentJacobian = np.zeros((15, 15))
-            self.MeasurmentJacobian[6:9, 6:9] = np.eye(3)
-            self.MeasurmentJacobian[0:3, 0:3] = np.eye(3)
+            self.MeasurmentJacobian = np.zeros((6, 21))
+            dg_dpsi = Rdot_psi.T @ self.state[6:9].reshape(-1,1)
+            dg_dtheta = Rdot_theta.T @ self.state[6:9].reshape(-1,1)
+            dg_dphi = Rdot_phi.T @ self.state[6:9].reshape(-1,1)
+            self.MeasurmentJacobian[0:3, 6] = dg_dpsi.flatten()
+            self.MeasurmentJacobian[0:3, 7] = dg_dtheta.flatten()
+            self.MeasurmentJacobian[0:3, 8] = dg_dphi.flatten()
+            dg_dpsi = Rdot_psi.T @ self.state[12:15].reshape(-1,1)
+            dg_dtheta = Rdot_theta.T @ self.state[12:15].reshape(-1,1)
+            dg_dphi = Rdot_phi.T @ self.state[12:15].reshape(-1,1)
+            self.MeasurmentJacobian[3:6, 12] = dg_dpsi.flatten()
+            self.MeasurmentJacobian[3:6, 13] = dg_dtheta.flatten()
+            self.MeasurmentJacobian[3:6, 14] = dg_dphi.flatten()
             return self.MeasurmentJacobian
         else:
-            jacobian = np.eye(15, 15)
+            u, _ = self.dynamics.rpmConversions(omega.flatten())
+            jacobian = np.zeros((21, 21))
+            jacobian[0:3, 0:3] = np.eye(3)
             jacobian[0:3, 3:6] = np.eye(3)*dt
+            jacobian[3:6, 3:6] = np.eye(3)
+            jacobian[3:6, 6:9] = np.eye(3)*dt
             psi, theta, phi = self.state[6:9].flatten()
-            Rdot_phi = np.array([[-sin(phi)*cos(theta), -cos(phi)*cos(psi)-sin(phi)*sin(theta)*sin(psi), cos(phi)*sin(psi)-sin(phi)*sin(theta)*cos(psi)],
-                                 [cos(phi)*cos(theta), -sin(phi)*cos(psi)+cos(phi)*sin(theta)
-                                  * sin(psi), sin(phi)*sin(psi)+cos(phi)*sin(theta)*cos(psi)],
-                                 [-sin(theta),                            cos(theta)*sin(psi), cos(theta)*cos(psi)]])
-            Rdot_theta = np.array([[-cos(phi)*sin(theta),                   cos(phi)*cos(theta)*sin(psi), cos(phi)*cos(theta)*cos(psi)],
-                                   [-sin(phi)*sin(theta),                   sin(phi) *
-                                    cos(theta)*sin(psi), sin(phi)*cos(theta)*cos(psi)],
-                                   [-cos(theta),                             -sin(phi)*sin(psi), -sin(phi)*cos(psi)]])
-            # Rdot_psi = np.array([[0, sin(phi)*sin(psi)+cos(phi)*sin(theta)*cos(psi), sin(phi)*cos(psi) - cos(phi)*sin(theta)*sin(psi)],
-            #                      [0, -cos(phi)*sin(psi)+sin(phi)*sin(theta)*cos(psi), -
-            #                       cos(phi)*cos(psi) - sin(phi)*sin(theta)*sin(psi)],
-            #                      [0,                              cos(theta)*cos(psi), -cos(theta)*sin(psi)]])
-            Rdot_psi = np.array([[0, sin(phi)*sin(psi)+cos(phi)*sin(theta)*cos(psi), sin(phi)*cos(psi) - cos(phi)*sin(theta)*sin(psi)],
-                                 [0, -cos(phi)*sin(psi)+sin(phi)*sin(theta)*cos(psi), -
-                                  cos(phi)*cos(psi) - sin(phi)*sin(theta)*sin(psi)],
-                                 [0,                              cos(theta)*cos(psi), -cos(theta)*sin(psi)]])
-            dF_dpsi = (Rdot_psi @ self.state[3:6])*dt
-            dF_dtheta = (Rdot_theta @ self.state[3:6])*dt
-            dF_dphi = (Rdot_phi @ self.state[3:6])*dt
-            jacobian[3:6, 6] = dF_dpsi.flatten()
-            jacobian[3:6, 7] = dF_dtheta.flatten()
-            jacobian[3:6, 8] = dF_dphi.flatten()
+            
+            jacobian[6:9, 9] = - Rdot_psi @ np.array([0,0, u.sum()])
+            jacobian[6:9, 10] = - Rdot_theta @ np.array([0,0, u.sum()])
+            jacobian[6:9, 11] = - Rdot_phi @ np.array([0,0, u.sum()])
+            jacobian[9:21, 9:21] = np.eye(12)
+            jacobian[9:12, 12:15] = np.eye(3)*dt
 
             self.PropogationJacobian = jacobian
             return self.PropogationJacobian
