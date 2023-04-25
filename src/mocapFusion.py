@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 from dataloader import *
 from dynamicsSim import *
 from numpy import sin, cos
-
+import tqdm
 
 class OnlineLearingFusion:
     def __init__(self):
@@ -28,7 +28,7 @@ class OnlineLearingFusion:
         self.state = np.zeros((21, 1))
         self.covariance = np.zeros((21, 21))
         self.R = np.eye(6,6)*0.1  #Measurement Noise
-        self.Q = np.eye(self.covariance.shape[0]) 
+        self.Q = np.eye(self.covariance.shape[0]) *10
 
         self.PropogationJacobian = None
         self.MeasurmentJacobian = None
@@ -141,7 +141,7 @@ class OnlineLearingFusion:
 
         ##--Loop--#
         x = []
-        for i in range(1,q.shape[1]):
+        for i in tqdm.tqdm(range(1,q.shape[1]-90000)):
             dt = t[i] - t[i-1]
             self.propogateStep(self.state,rpm[:,i],dt)
             measurementPacket = np.array([float(acc[0,i]),float(acc[1,i]),float(acc[2,i]),
@@ -149,7 +149,8 @@ class OnlineLearingFusion:
             self.measurmentStep(measurementPacket, dt)
             x.append(float(self.state[0]))
 
-        plt.plot(x); plt.show()
+        plt.plot(x); plt.plot(mocap[0,:]);
+        plt.show()
 
         return self.state
 
