@@ -25,12 +25,20 @@ class dynamics:
     def propogateDynamics(self, x, omega, dt):
         # state vector -> [x,xdot,xddot, euler,angular velocities, biases]
         F, _ = self.rpmConversions(omega.flatten())
-        R_b_w = Rotation.from_euler('xyz', x[9:12].flatten()).as_matrix()
+        R_b_w = np.round(Rotation.from_euler('xyz', x[9:12].flatten()).as_matrix(),2)
+        # R_b_w[R_b_w<1e-10] = 0
         acc = np.array([0, 0, self.m*self.G]).reshape(-1, 1) + \
-            R_b_w@np.array([0, 0, np.sum(-F)]).reshape(-1, 1)    
-        x[3:6] += (acc*dt)  # Velocities
-        x[:3] += x[3:6]*dt  # Position
-        x[6:9] = acc  #Accelerations
+            R_b_w@np.array([0, 0, np.sum(-F)]).reshape(-1, 1)  
+        oldpos = x[:2]
+        x[:3] += x[3:6]*dt # Position
+        x[3:6] += (x[6:9]*dt)/self.m  # Velocities
+        x[6:9] = acc/self.m  #Accelerations
+
+        if x[2] > 0:
+            x[2:9]*= 0 
+            x[:2] = oldpos
+        else:
+            pass
         x[9:12] += x[12:15]*dt #Angles
         #Angular Velocities, Biases will remain the same
         return x

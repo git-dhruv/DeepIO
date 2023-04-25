@@ -27,9 +27,15 @@ class OnlineLearingFusion:
         """
         self.state = np.zeros((21, 1))
         self.covariance = np.zeros((21, 21))
-        self.R = np.eye(6,6)*0.1  #Measurement Noise
-        self.Q = np.eye(self.covariance.shape[0]) *10
-
+        self.R = np.eye(6,6)/100  #Measurement Noise
+        self.R[-3:,-3:] += 10*np.eye(3)
+        self.Q = np.eye(self.covariance.shape[0])/50
+        #Angles
+        self.Q[9:12,9:12] += 5*np.eye(3)
+        #Acc
+        self.Q[6:9,6:9] += 20*np.eye(3)
+        #Biases 
+        self.Q[-6:,-6:] += 10*np.eye(6)
         self.PropogationJacobian = None
         self.MeasurmentJacobian = None
 
@@ -64,12 +70,27 @@ class OnlineLearingFusion:
             self.MeasurmentJacobian[0:3, 6] = dg_dpsi.flatten()
             self.MeasurmentJacobian[0:3, 7] = dg_dtheta.flatten()
             self.MeasurmentJacobian[0:3, 8] = dg_dphi.flatten()
+            dg_dpsi = Rdot_psi.T @ self.state[15:18].reshape(-1,1)
+            dg_dtheta = Rdot_theta.T @ self.state[15:18].reshape(-1,1)
+            dg_dphi = Rdot_phi.T @ self.state[15:18].reshape(-1,1)
+            
+            self.MeasurmentJacobian[0:3, 15] = dg_dpsi.flatten()
+            self.MeasurmentJacobian[0:3, 16] = dg_dtheta.flatten()
+            self.MeasurmentJacobian[0:3, 17] = dg_dphi.flatten()
+
             dg_dpsi = Rdot_psi.T @ self.state[12:15].reshape(-1,1)
             dg_dtheta = Rdot_theta.T @ self.state[12:15].reshape(-1,1)
             dg_dphi = Rdot_phi.T @ self.state[12:15].reshape(-1,1)
             self.MeasurmentJacobian[3:6, 12] = dg_dpsi.flatten()
             self.MeasurmentJacobian[3:6, 13] = dg_dtheta.flatten()
             self.MeasurmentJacobian[3:6, 14] = dg_dphi.flatten()
+            
+            dg_dpsi = Rdot_psi.T @ self.state[18:].reshape(-1,1)
+            dg_dtheta = Rdot_theta.T @ self.state[18:].reshape(-1,1)
+            dg_dphi = Rdot_phi.T @ self.state[18:].reshape(-1,1)
+            self.MeasurmentJacobian[3:6, 18] = dg_dpsi.flatten()
+            self.MeasurmentJacobian[3:6, 19] = dg_dtheta.flatten()
+            self.MeasurmentJacobian[3:6, 20] = dg_dphi.flatten()
             return self.MeasurmentJacobian
         else:
             u, _ = self.dynamics.rpmConversions(omega.flatten())
@@ -78,11 +99,12 @@ class OnlineLearingFusion:
             jacobian[0:3, 3:6] = np.eye(3)*dt
             jacobian[3:6, 3:6] = np.eye(3)
             jacobian[3:6, 6:9] = np.eye(3)*dt
+            # jacobian[0:3, 6:9] = np.eye(3)*dt*dt*0.5
             
             
-            jacobian[6:9, 9] = - Rdot_psi @ np.array([0,0, u.sum()])
-            jacobian[6:9, 10] = - Rdot_theta @ np.array([0,0, u.sum()])
-            jacobian[6:9, 11] = - Rdot_phi @ np.array([0,0, u.sum()])
+            jacobian[6:9, 9] = - Rdot_psi @ np.array([0,0, u.sum()/0.9])
+            jacobian[6:9, 10] = - Rdot_theta @ np.array([0,0, u.sum()/0.9])
+            jacobian[6:9, 11] = - Rdot_phi @ np.array([0,0, u.sum()/0.9])
             jacobian[9:21, 9:21] = np.eye(12)
             jacobian[9:12, 12:15] = np.eye(3)*dt
 
@@ -95,20 +117,27 @@ class OnlineLearingFusion:
         self.covariance = J@self.covariance@J.T + self.Q
 
     def measurementModel(self):
+        #x,y,z,vx,vy,vz,acc,acc,acc,r,p,y,wx,wy,wz,acb,ac
+
         #Rotation of IMU wrt NED
         R = Rotation.from_euler('xyz',self.state[9:12].flatten()).as_matrix()
         #Rotation of NED wrt imu
         R = R.T
-        gyro = R@self.state[12:15].reshape(-1,1) 
-        acc = R@self.state[6:9].reshape(-1,1)
+        gyro = R@(self.state[12:15].reshape(-1,1)+self.state[18:].reshape(-1,1)).reshape(-1,1) 
+        acc = R@(self.state[6:9].reshape(-1,1)+self.state[15:18].reshape(-1,1))
         return np.vstack((acc,gyro))
 
     def measurmentStep(self, measurments, dt):        
+        measurments[:3] = (measurments[:3].reshape(-1,1) - Rotation.from_euler('xyz', self.state[9:12].flatten()).as_matrix()@self.grav.reshape(-1,1)).flatten()
         y = measurments.reshape(-1,1) - self.measurementModel()
         H = self.calcJacobian(dt,measurment=1)
         S = H@self.covariance@H.T + self.R
         K = self.covariance@H.T@np.linalg.inv(S)
         self.state = self.state + K@y
+        q = Rotation.from_euler('xyz', self.state[9:12].flatten()).as_quat()
+        q = q/np.linalg.norm(q)
+
+        self.state[9:12] = Rotation.from_quat(q).as_euler('xyz').reshape(-1,1)
         self.covariance = (np.eye(21) - K@H)@self.covariance
 
     def runPipeline(self):
@@ -134,22 +163,44 @@ class OnlineLearingFusion:
 
 
         ##--Initialization--#
+        self.state += 1e-10
         self.state[:3] = mocap[:,0].reshape(-1,1)
         self.state[9:12] = Rotation.from_quat(q[:,0].flatten()).as_euler('xyz').reshape(-1,1)
-        acc[-1,:] = acc[-1,:] - acc[-1,:20].mean()
-        print(acc[-1,:2])
+        acc[-1,:] = acc[-1,:]
+        self.grav = np.array([0,0,acc[-1,:20].mean()]).reshape(-1,1)
+        # print(acc[-1,:2])
 
         ##--Loop--#
-        x = []
-        for i in tqdm.tqdm(range(1,q.shape[1]-90000)):
+        self.x = []
+        self.quat = []
+        R = self.R.copy()
+        for i in tqdm.tqdm(range(1,25000)):
+            # if i>1000
             dt = t[i] - t[i-1]
             self.propogateStep(self.state,rpm[:,i],dt)
+            """
+            Please Delete these if conditions to see the drift
+            """
+            if i%1000==0:                
+                self.state[9:12] = Rotation.from_quat(q[:,i]).as_euler('xyz').reshape(-1,1)
+                self.covariance[9:12,9:12] = 1e-10               
+                self.covariance[-3:,:] *= 50
+                self.state[:3] = mocap[:,i].reshape(-1,1)
+                self.covariance[:3] /= 1000
+                self.covariance*= 0 
+
             measurementPacket = np.array([float(acc[0,i]),float(acc[1,i]),float(acc[2,i]),
                                           float(gyro[0,i]),float(gyro[1,i]),float(gyro[2,i])])
+            self.R[:3,:] = R[:3,:]*np.clip(np.linalg.norm(acc[:,i])/9,1,4)
             self.measurmentStep(measurementPacket, dt)
-            x.append(float(self.state[0]))
+            self.x.append(float(self.state[1]))
+            # self.quat.append(float(Rotation.from_quat(q[:,i]).as_euler('xyz')[0]))
+            self.quat.append(float(mocap[1,i]))
+            plt.imshow(self.covariance)
+            plt.pause(0.01)
 
-        plt.plot(x); plt.plot(mocap[0,:]);
+        plt.plot(self.x);
+        plt.plot(self.quat)
         plt.show()
 
         return self.state

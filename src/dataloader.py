@@ -26,8 +26,8 @@ class dataloader:
         self.rotor_data = None
         self.mocap_data = None
         self.ConcatData = None
-        self.setupLogging()
-        logging.info("Dataloader Started")
+        # self.setupLogging()
+        # logging.info("Dataloader Started")
 
     def setupLogging(self):
         log_format = "[%(filename)s]%(lineno)d::%(message)s"
@@ -35,7 +35,7 @@ class dataloader:
 
     def loadCase(self, case):
         for folder in os.listdir(os.path.join(self.folder, case)):
-            logging.info(f"Loading {folder}")
+            # logging.info(f"Loading {folder}")
             folder = join(join(self.folder, case), folder)
             bagfile = os.path.join(folder, "rosbag.bag")
             imu, rotor, mocap = self.parseBagFile(bagfile)
