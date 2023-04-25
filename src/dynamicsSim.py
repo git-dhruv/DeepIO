@@ -23,16 +23,16 @@ class dynamics:
         # propHeight: 0.023
 
     def propogateDynamics(self, x, omega, dt):
-        # state vector -> [x,xdot,euler,biases]
+        # state vector -> [x,xdot,xddot, euler,angular velocities, biases]
         F, _ = self.rpmConversions(omega.flatten())
-        R_b_w = Rotation.from_euler('xyz', x[6:9].flatten()).as_matrix()
+        R_b_w = Rotation.from_euler('xyz', x[9:12].flatten()).as_matrix()
         acc = np.array([0, 0, self.m*self.G]).reshape(-1, 1) + \
-            R_b_w@np.array([0, 0, np.sum(F)]).reshape(-1, 1)
-
-        # Quats and biases remain the same
+            R_b_w@np.array([0, 0, np.sum(-F)]).reshape(-1, 1)    
         x[3:6] += (acc*dt).flatten()  # Velocities
         x[:3] += x[3:6]*dt  # Position
-
+        x[6:9] = acc.flatten()  #Accelerations
+        x[9:12] += x[12:15]*dt #Angles
+        #Angular Velocities, Biases will remain the same
         return x
 
     def rpmConversions(self, omega):

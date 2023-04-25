@@ -82,15 +82,17 @@ class OnlineLearingFusion:
         self.state = self.dynamics.propogateDynamics(state, rpm, dt)
         self.covariance = self.PropogationJacobian@self.covariance@self.PropogationJacobian.T + self.R
 
-    def measurmentStep(self, measurments, dt):
+    def measurmentStep(self, measurments, dt):        
         G = self.calcJacobian(dt, measurment=1)
 
     def runPipeline(self):
-        # 1. Load the Data
+        ##--Load the Data--##
         loadDataUtil = dataloader("..\data\clover")
         loadDataUtil.runPipeline()
         loadDataUtil.homogenizeData()
-        data = loadDataUtil.ConcatData
+        gyro, acc, rpm, mocap, q, t = loadDataUtil.convertDataToIndividualNumpy()
+
+        ##--Rotate the Motion Capture to IMU frame from Body Frame --#
         # R from imu to ned Frame
         R_imu_to_ned = np.array([[-1, 0, 0],
                                 [0, -1, 0],
@@ -98,21 +100,24 @@ class OnlineLearingFusion:
         R_imutoBody= np.array([[0, -1, 0],
              [1, 0, 0],
              [0,0,1]])
-        gyro, acc, rpm, mocap, q, t = loadDataUtil.convertDataToIndividualNumpy()
-        mocap[:3] = R_imutoBody @ mocap[:3]
+        mocap = R_imutoBody @ mocap
         for i in range(q.shape[1]):
-            shit = R_imutoBody@Rotation.from_quat(q[:,i]).as_matrix()
+            shit = R_imutoBody@Rotation.from_quat(q[:,i]).as_matrix()            
             q[:,i] = Rotation.from_matrix(shit).as_quat().flatten()
 
-    
-        # 2. Run through the Loop
-        for i in range(q.shape[1]):
-            self.propogateStep()
-            
-        # 3. Propogate Step
-        # 4. Measurement Update
-        # Return all the state vectors
-        raise NotImplementedError
+
+        ##--Initialization--#
+        self.state[:3] = mocap[:,0].flatten()
+        self.state[9:12] = Rotation.from_quat(q[:,0].flatten()).as_euler('xyz')
+
+        ##--Loop--#
+        for i in range(1,q.shape[1]):
+            dt = t[i] - t[i-1]
+            self.propogateStep(self.state,rpm[:,i],dt)
+            measurementPacket = np.array([float(gyro[0,i]),float(gyro[1,i]),float(gyro[2,i]),
+                                          float(acc[0,i]),float(acc[1,i]),float(acc[2,i])])
+            self.measurmentStep(measurementPacket, dt)
+        return self.state
 
     def plotSampleOutput(self):
         raise NotImplementedError
