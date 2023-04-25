@@ -27,9 +27,9 @@ class OnlineLearingFusion:
         """
         self.state = np.zeros((21, 1))
         self.covariance = np.zeros((21, 21))
-        self.R = np.eye(6,6)/100  #Measurement Noise
-        self.R[-3:,-3:] += 10*np.eye(3)
-        self.Q = np.eye(self.covariance.shape[0])/50
+        self.R = np.eye(6,6)  #Measurement Noise
+        # self.R[-3:,-3:] += 10*np.eye(3)
+        self.Q = np.eye(self.covariance.shape[0])
         #Angles
         self.Q[9:12,9:12] += 5*np.eye(3)
         #Acc
@@ -132,21 +132,24 @@ class OnlineLearingFusion:
         self.state = self.dynamics.propogateDynamics(state, rpm, dt)
         self.covariance = J@self.covariance@J.T + self.Q
 
-    def measurementModel(self):
+    def measurementModel(self, packet_num = 1):
         #x,y,z,vx,vy,vz,acc,acc,acc,r,p,y,wx,wy,wz,acb,ac
 
-        #Rotation of IMU wrt NED
-        R = Rotation.from_euler('xyz',self.state[9:12].flatten()).as_matrix()
-        #Rotation of NED wrt imu
-        R = R.T
-        gyro = R@(self.state[12:15].reshape(-1,1)+self.state[18:].reshape(-1,1)).reshape(-1,1) 
-        acc = R@(self.state[6:9].reshape(-1,1)+self.state[15:18].reshape(-1,1))
-        return np.vstack((acc,gyro))
+        if packet_num == 2:
+            return np.vstack((self.state[0:3], self.state[9:12]))
+        else:
+            #Rotation of IMU wrt NED
+            R = Rotation.from_euler('xyz',self.state[9:12].flatten()).as_matrix()
+            #Rotation of NED wrt imu
+            R = R.T
+            gyro = R@(self.state[12:15].reshape(-1,1)+self.state[18:].reshape(-1,1)).reshape(-1,1) 
+            acc = R@(self.state[6:9].reshape(-1,1)+self.state[15:18].reshape(-1,1))
+            return np.vstack((acc,gyro))
 
-    def measurmentStep(self, measurments, dt):        
-        measurments[:3] = (measurments[:3].reshape(-1,1) - Rotation.from_euler('xyz', self.state[9:12].flatten()).as_matrix()@self.grav.reshape(-1,1)).flatten()
-        y = measurments.reshape(-1,1) - self.measurementModel()
-        H = self.calcJacobian(dt,measurment=1)
+    def measurmentStep(self, measurments, dt, packet_num = 1):        
+        # measurments[:3] = (measurments[:3].reshape(-1,1) - Rotation.from_euler('xyz', self.state[9:12].flatten()).as_matrix()@self.grav.reshape(-1,1)).flatten()
+        y = measurments.reshape(-1,1) - self.measurementModel(packet_num= packet_num)
+        H = self.calcJacobian(dt,measurment=packet_num)
         S = H@self.covariance@H.T + self.R
         K = self.covariance@H.T@np.linalg.inv(S)
         self.state = self.state + K@y
@@ -163,6 +166,7 @@ class OnlineLearingFusion:
         loadDataUtil.runPipeline()
         loadDataUtil.homogenizeData()
         gyro, acc, rpm, mocap, q, t = loadDataUtil.convertDataToIndividualNumpy()
+        
 
         ##--Rotate the Motion Capture to IMU frame from Body Frame --#
         # R from imu to ned Frame
@@ -173,9 +177,14 @@ class OnlineLearingFusion:
              [1, 0, 0],
              [0,0,1]])
         mocap = R_imutoBody @ mocap
+        eulers =[]
         for i in range(q.shape[1]):
             shit = R_imutoBody@Rotation.from_quat(q[:,i]).as_matrix()            
             q[:,i] = Rotation.from_matrix(shit).as_quat().flatten()
+            quat = Quaternion(scalar = q[0, i], vec = q[1:, i])
+            eulers.append(np.flip(quat.euler_angles()))
+        eulers = np.array(eulers)
+        
 
 
         ##--Initialization--#
@@ -197,25 +206,20 @@ class OnlineLearingFusion:
             """
             Please Delete these if conditions to see the drift
             """
-            if i%1000==0:                
-                self.state[9:12] = Rotation.from_quat(q[:,i]).as_euler('xyz').reshape(-1,1)
-                self.covariance[9:12,9:12] = 1e-10               
-                self.covariance[-3:,:] *= 50
-                self.state[:3] = mocap[:,i].reshape(-1,1)
-                self.covariance[:3] /= 1000
-                self.covariance*= 0 
 
             measurementPacket = np.array([float(acc[0,i]),float(acc[1,i]),float(acc[2,i]),
                                           float(gyro[0,i]),float(gyro[1,i]),float(gyro[2,i])])
-            self.R[:3,:] = R[:3,:]*np.clip(np.linalg.norm(acc[:,i])/9,1,4)
-            self.measurmentStep(measurementPacket, dt)
+            measurementPacket2 = np.array([mocap[0,i],mocap[1,i],mocap[2,i],eulers[i,0],eulers[i,1],eulers[i,2]])
+            # self.R[:3,:] = R[:3,:]*np.clip(np.linalg.norm(acc[:,i])/9,1,4)
+            # self.measurmentStep(measurementPacket, dt, packet_num=1 )
+            self.measurmentStep(measurementPacket2, dt, packet_num=2)
             self.x.append(float(self.state[1]))
             # self.quat.append(float(Rotation.from_quat(q[:,i]).as_euler('xyz')[0]))
             self.quat.append(float(mocap[1,i]))
-            plt.imshow(self.covariance)
-            plt.pause(0.01)
+            # plt.imshow(self.covariance)
+            # plt.pause(0.01)
 
-        plt.plot(self.x);
+        plt.plot(self.x)
         plt.plot(self.quat)
         plt.show()
 
