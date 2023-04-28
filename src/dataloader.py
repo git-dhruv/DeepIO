@@ -23,10 +23,10 @@ class dataloader:
         self.cases = os.listdir(self.folder)
         print(f"[LOADER] Found {len(self.cases)} Directories")
 
-        self.relevantCSV = ['gps.csv']
-        self.gps_df = None
-        self.imu_f = None
-        self.odo_df = None
+        self.relevantCSV = ['gps.csv','wheels.csv','ms25_euler.csv', 'groundtruth_2012-01-08.csv']
+        self.gps_df = None      #GPS Converted Data
+        self.imu_df = None       #IMU Data
+        self.odo_df = None      #Odometry Data
         self.gtruth_df = None
         self.ConcatData = None
 
@@ -35,20 +35,55 @@ class dataloader:
         logging.basicConfig(level='DEBUG', format=log_format)
 
     def loadCase(self, case):
+        
         case = os.path.join(self.folder,case)
+        relCSV = [os.path.normpath(os.path.join(case,i)) for i in self.relevantCSV]
         for file in glob.glob(f'{case}\\'+'*.csv'):
-            if file in self.relevantCSV:
-                self.parseCSV(file)
+            file = os.path.normpath(file)
+            if file in relCSV:
+                self.parseCSV(file,relCSV)
+    
+    def parseCSV(self, filename, fileList):
+        #@TODO: Dhruv - Figure out which file is it and call the relevant functions
+        if filename == fileList[1]:
+            self.parseWheel(filename)
+        if filename == fileList[0]:
+            self.parseGPS(filename)
+        if filename == fileList[2]:
+            self.parseEuler(filename)
+        if filename == fileList[3]:
+            self.parseGroundTruth(filename)
+
 
     def find_csv_filenames(self, path_to_dir, suffix=".csv" ):
         filenames = os.listdir(path_to_dir)
         return [ filename for filename in filenames if filename.endswith( suffix ) ]
+    def parseGroundTruth(self, file):
+        if self.gtruth_df is None:    
+            self.gtruth_df = pd.read_csv(file)
+        else:
+            self.gtruth_df = pd.concat([self.gtruth_df, pd.read_csv(file)], ignore_index=True, axis=0)
+    def parseWheel(self, file):
+        if self.odo_df is None:
+            self.odo_df = pd.read_csv(file)
+        else:
+            self.odo_df = pd.concat(
+                [self.odo_df, pd.read_csv(file)], ignore_index=True, axis=0)
+
+    def parseEuler(self, file):
+        if self.imu_df is None:
+            self.imu_df = pd.read_csv(file)
+        else:
+            self.imu_df = pd.concat([self.imu_df, pd.read_csv(file)], ignore_index = True, axis=0)
+
+    def parseGPS(self, file):
+        gps = pd.read_csv(file)
+        if self.gps_df is None:
+            self.gps_df = gps.iloc[:,[0,3,4,-1]]
+        else:
+            self.gps_df = pd.concat([self.gps_df,gps],ignore_index=True, axis=0)
 
         
-
-    def runPipeline(self):
-        for case in tqdm(self.cases):
-            self.loadCase(case)
         
     def homogenizeData(self):
         """
@@ -135,9 +170,15 @@ class dataloader:
         mocap = np.vstack((mcapx, np.vstack((mcapy, mcapz))))
         return gyro, acc, rpm, mocap, q, t
 
+    def runPipeline(self):
+        for case in (self.cases):
+            self.loadCase(case)
+    def getDataFrames(self):
+        return self.gps_df,self.imu_df,self.odo_df,self.gtruth_df
 
 if __name__ == "__main__":
     directory = r'data/'
-    loda = dataloader(directory)
-    loda.runPipeline()
+    mn = dataloader(directory)
+    mn.runPipeline()
+    
     
