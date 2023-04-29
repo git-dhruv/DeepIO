@@ -162,7 +162,7 @@ class OnlineLearingFusion:
             measurments[:3] = (measurments[:3].reshape(-1,1) - Rot@self.grav.reshape(-1,1)).flatten()
 
             #Normalizing the accelerometer
-            measurments[:3] = 9.81*measurments[:3]/np.linalg.norm(measurments[:3])
+            # measurments[:3] = 9.81*measurments[:3]/np.linalg.norm(measurments[:3])
             R = deepcopy(self.R_imu)
         else:
             R = deepcopy(self.R)
@@ -268,6 +268,9 @@ class OnlineLearingFusion:
         self.state[9:12] = Rotation.from_quat(q[:,0].flatten()).as_euler('xyz').reshape(-1,1)
         self.state[18:] = gyro[:,:20].mean(axis=1).reshape(-1,1)
         self.state[15:17] = acc[:2,:20].mean(axis=1).reshape(-1,1)
+        self.state[-1] = -150 
+        self.state[-2] = 130
+        self.state[-3] = 1000
 
         # self.grav = acc[:,:20].mean(axis=1).reshape(-1,1)
         self.grav = -np.array([0,0,9.81]).reshape(-1,1)
@@ -290,9 +293,9 @@ class OnlineLearingFusion:
                 if i%100==0:
                     self.measurmentStep(measurementPacket2, dt, packet_num=2)
                 
-                self.x.append(float(self.state[0]))
-                # self.quat.append(float(Rotation.from_quat(q[:,i]).as_euler('xyz')[0]))
-                self.quat.append(float(mocapTatti[0,i]))
+            self.x.append(float(self.state[0]))
+            # self.quat.append(float(Rotation.from_quat(q[:,i]).as_euler('xyz')[0]))
+            self.quat.append(float(mocapTatti[0,i]))
 
         plt.plot(self.quat)
         plt.plot(self.x)
