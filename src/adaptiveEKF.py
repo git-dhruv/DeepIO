@@ -18,6 +18,7 @@ from dataloader import *
 from dynamicsSim import *
 from numpy import sin, cos
 import tqdm
+from copy import deepcopy
 
 class OnlineLearingFusion:
     def __init__(self):
@@ -27,17 +28,14 @@ class OnlineLearingFusion:
         """
         self.state = np.zeros((21, 1))
         self.covariance = np.zeros((21, 21))
+
+        #Kya hi hoga
         self.R = np.eye(6,6)*100  #Measurement Noise
         self.R[-3:,-3:] += 10*np.eye(3)
-        self.R_default = self.R.copy()
-        self.Q = np.eye(self.covariance.shape[0])
-        self.Q_default = self.Q.copy()
-        #Angles
-        # self.Q[9:12,9:12] += 5*np.eye(3)
-        # #Acc
-        # self.Q[6:9,6:9] += 20*np.eye(3)
-        # #Biases 
-        # self.Q[-6:,-6:] += 10*np.eye(6)
+        self.R_imu = deepcopy(self.R)
+
+        self.Q = np.eye(self.covariance.shape[0])*10
+
         self.PropogationJacobian = None
         self.MeasurmentJacobian = None
 
@@ -147,15 +145,31 @@ class OnlineLearingFusion:
             gyro = R@(self.state[12:15].reshape(-1,1)+self.state[18:].reshape(-1,1)).reshape(-1,1) 
             acc = R@(self.state[6:9].reshape(-1,1)+self.state[15:18].reshape(-1,1))
             return np.vstack((acc,gyro))
+        
+    def getValidRotation(self, R):
+        for _ in range(3):
+            R = np.round(R,2)
+            U,_,Vt = np.linalg.svd(R)
+            Smod = np.eye(3)
+            Smod[-1,-1] = np.linalg.det(U@Vt)
+            R = U@Smod@Vt
+        return R
 
     def measurmentStep(self, measurments, dt, packet_num = 1):  
+        from copy import deepcopy      #Planted here to frustrate you
         if packet_num==1:
-            measurments[:3] = (measurments[:3].reshape(-1,1) - Rotation.from_euler('xyz', self.state[9:12].flatten()).as_matrix()@self.grav.reshape(-1,1)).flatten()
+            # print(measurments[:3])
+            Rot = self.getValidRotation(Rotation.from_euler('xyz', self.state[9:12].flatten()).as_matrix()).T
+            measurments[:3] = (measurments[:3].reshape(-1,1) - Rot@self.grav.reshape(-1,1)).flatten()
+            # print(measurments[:3])
+            R = deepcopy(self.R_imu)
+        else:
+            R = deepcopy(self.R)
 
 
         y = measurments.reshape(-1,1) - self.measurementModel(packet_num= packet_num)
         H = self.calcJacobian(dt,measurment=packet_num)
-        S = H@self.covariance@H.T + self.R
+        S = H@self.covariance@H.T + R
         K = self.covariance@H.T@np.linalg.inv(S)
 
         old_state = self.state.copy()
@@ -166,38 +180,44 @@ class OnlineLearingFusion:
         self.state[9:12] = Rotation.from_quat(q).as_euler('xyz').reshape(-1,1)
 
         
-        if packet_num==2:
-            ####Adaptive Q part####
-            alpha = 0.3  #half life!?
-            self.Q = alpha*self.Q + (1-alpha)*(K@S@K.T)
-
-            ####Adaptive R part####
-            beta = 0.3
-            #Angle Naive Residual Calculation
-            residual = measurments.reshape(-1,1) - self.measurementModel(packet_num=packet_num)
-            #Nearest rotation residuals -> doesnt matter the directions
-            residual[3:] = np.arctan2(np.sin(residual[3:]),np.cos(residual[3:]))
-
+        if 1:
             
 
-            self.R = beta*self.R + (1-beta)*(residual@residual.T+H@self.covariance@H.T)
+            ####Adaptive R part####
+            beta = 0.001
+            #Angle Naive Residual Calculation
+            residual = measurments.reshape(-1,1) - self.measurementModel(packet_num=packet_num)
+            if packet_num==2:
+                #Nearest rotation residuals -> doesnt matter the directions
+                residual[3:] = np.arctan2(np.sin(residual[3:]),np.cos(residual[3:]))
 
+            if packet_num==1:
+                residual[:3] = residual[:3]*np.clip(np.linalg.norm(measurments[:3])/10,1,None)
+
+            R = beta*R + (1-beta)*(residual@residual.T+H@self.covariance@H.T)
+            
             #Recalculating State Update
-            S = H@self.covariance@H.T + self.R
+            H = self.calcJacobian(dt,measurment=packet_num)
+            S = H@self.covariance@H.T + R
             K = self.covariance@H.T@np.linalg.inv(S)
             self.state = old_state + K@y
             q = Rotation.from_euler('xyz', self.state[9:12].flatten()).as_quat()
             q = q/np.linalg.norm(q)
 
             self.state[9:12] = Rotation.from_quat(q).as_euler('xyz').reshape(-1,1)
-
-            
-
-        
-
-
+            ####Adaptive Q part Doesnt work for some reason####
+            if False:
+                alpha = 0.8  #half life!?
+                #There are two formulas, 2nd one works this one might not
+                self.Q = alpha*self.Q + (1-alpha)*(K@y@y.T@K.T)
+                
         #Covariance Update
         self.covariance = (np.eye(21) - K@H)@self.covariance
+
+        if packet_num==1:
+            self.R_imu = deepcopy(R)
+        else:
+            self.R = deepcopy(R)
 
 
 
@@ -242,17 +262,20 @@ class OnlineLearingFusion:
 
 
         ##--Initialization--#
-        self.state += 1e-10
+        self.state += 1e-15
         self.state[:3] = mocap[:,0].reshape(-1,1)
         self.state[9:12] = Rotation.from_quat(q[:,0].flatten()).as_euler('xyz').reshape(-1,1)
-        acc[-1,:] = acc[-1,:]
-        self.grav = np.array([0,0,acc[-1,:20].mean()]).reshape(-1,1)
+        self.state[18:] = gyro[:,:20].mean(axis=1).reshape(-1,1)
+        self.state[15:17] = acc[:2,:20].mean(axis=1).reshape(-1,1)
+
+        # self.grav = acc[:,:20].mean(axis=1).reshape(-1,1)
+        self.grav = -np.array([0,0,9.81]).reshape(-1,1)
         # print(acc[-1,:2])
 
         ##--Loop--#
         self.x = []
         self.quat = []
-        R = self.R.copy()
+
         for i in tqdm.tqdm(range(1,25000)):
             # if i>1000
             dt = t[i] - t[i-1]
@@ -260,16 +283,17 @@ class OnlineLearingFusion:
             """
             Please Delete these if conditions to see the drift
             """
-
             measurementPacket = np.array([float(acc[0,i]),float(acc[1,i]),float(acc[2,i]),
                                           float(gyro[0,i]),float(gyro[1,i]),float(gyro[2,i])])
             measurementPacket2 = np.array([mocap[0,i],mocap[1,i],mocap[2,i],eulers[i,0],eulers[i,1],eulers[i,2]])
-            # self.measurmentStep(measurementPacket, dt, packet_num=1 )
-            self.measurmentStep(measurementPacket2, dt, packet_num=2)
+            self.measurmentStep(measurementPacket, dt, packet_num=1 )
             
-            self.x.append(float(self.state[1]))
+            if i%100==0:
+                self.measurmentStep(measurementPacket2, dt, packet_num=2)
+            
+            self.x.append(float(self.state[0]))
             # self.quat.append(float(Rotation.from_quat(q[:,i]).as_euler('xyz')[0]))
-            self.quat.append(float(mocapTatti[1,i]))
+            self.quat.append(float(mocapTatti[0,i]))
 
         plt.plot(self.quat)
         plt.plot(self.x)
