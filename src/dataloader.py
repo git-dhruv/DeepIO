@@ -63,6 +63,7 @@ class dataloader:
             self.gtruth_df = pd.read_csv(file)
         else:
             self.gtruth_df = pd.concat([self.gtruth_df, pd.read_csv(file)], ignore_index=True, axis=0)
+        
     def parseWheel(self, file):
         if self.odo_df is None:
             self.odo_df = pd.read_csv(file)
@@ -78,10 +79,13 @@ class dataloader:
 
     def parseGPS(self, file):
         gps = pd.read_csv(file)
+        gps.columns = ['Time', 'Fix', 'NumSat', 'Latitude','Longitude','Altitude', 'Track', 'Speed']
+        gps.drop(['NumSat'], axis=1, inplace=True)
         if self.gps_df is None:
-            self.gps_df = gps.iloc[:,[0,3,4,-1]]
+            self.gps_df = gps
         else:
             self.gps_df = pd.concat([self.gps_df,gps],ignore_index=True, axis=0)
+        
 
         
         
