@@ -29,7 +29,9 @@ class OnlineLearingFusion:
         self.covariance = np.zeros((21, 21))
         self.R = np.eye(6,6)*100  #Measurement Noise
         self.R[-3:,-3:] += 10*np.eye(3)
+        self.R_default = self.R.copy()
         self.Q = np.eye(self.covariance.shape[0])
+        self.Q_default = self.Q.copy()
         #Angles
         # self.Q[9:12,9:12] += 5*np.eye(3)
         # #Acc
@@ -153,14 +155,56 @@ class OnlineLearingFusion:
 
         y = measurments.reshape(-1,1) - self.measurementModel(packet_num= packet_num)
         H = self.calcJacobian(dt,measurment=packet_num)
-        S = H@self.covariance@H.T + self.R*10/packet_num
+        S = H@self.covariance@H.T + self.R
         K = self.covariance@H.T@np.linalg.inv(S)
+
+        old_state = self.state.copy()
         self.state = self.state + K@y
         q = Rotation.from_euler('xyz', self.state[9:12].flatten()).as_quat()
         q = q/np.linalg.norm(q)
 
         self.state[9:12] = Rotation.from_quat(q).as_euler('xyz').reshape(-1,1)
+
+        
+        if packet_num==2:
+            ####Adaptive Q part####
+            alpha = 0.3  #half life!?
+            self.Q = alpha*self.Q + (1-alpha)*(K@S@K.T)
+
+            ####Adaptive R part####
+            beta = 0.3
+            #Angle Naive Residual Calculation
+            residual = measurments.reshape(-1,1) - self.measurementModel(packet_num=packet_num)
+            #Nearest rotation residuals -> doesnt matter the directions
+            residual[3:] = np.arctan2(np.sin(residual[3:]),np.cos(residual[3:]))
+
+            
+
+            self.R = beta*self.R + (1-beta)*(residual@residual.T+H@self.covariance@H.T)
+
+            #Recalculating State Update
+            S = H@self.covariance@H.T + self.R
+            K = self.covariance@H.T@np.linalg.inv(S)
+            self.state = old_state + K@y
+            q = Rotation.from_euler('xyz', self.state[9:12].flatten()).as_quat()
+            q = q/np.linalg.norm(q)
+
+            self.state[9:12] = Rotation.from_quat(q).as_euler('xyz').reshape(-1,1)
+
+            
+
+        
+
+
+        #Covariance Update
         self.covariance = (np.eye(21) - K@H)@self.covariance
+
+
+
+
+        if np.all(np.linalg.eigvals(self.Q) < 0) or np.all(np.linalg.eigvals(self.R) < 0):
+            print("Locha Lafda")
+
 
     def runPipeline(self):
         ##--Load the Data--##
@@ -220,14 +264,13 @@ class OnlineLearingFusion:
             measurementPacket = np.array([float(acc[0,i]),float(acc[1,i]),float(acc[2,i]),
                                           float(gyro[0,i]),float(gyro[1,i]),float(gyro[2,i])])
             measurementPacket2 = np.array([mocap[0,i],mocap[1,i],mocap[2,i],eulers[i,0],eulers[i,1],eulers[i,2]])
-            if np.trace(self.covariance)>=10000:
-                self.measurmentStep(measurementPacket2, dt, packet_num=2)
-            self.measurmentStep(measurementPacket, dt, packet_num=1 )
+            # self.measurmentStep(measurementPacket, dt, packet_num=1 )
+            self.measurmentStep(measurementPacket2, dt, packet_num=2)
             
             self.x.append(float(self.state[1]))
             # self.quat.append(float(Rotation.from_quat(q[:,i]).as_euler('xyz')[0]))
             self.quat.append(float(mocapTatti[1,i]))
-        
+
         plt.plot(self.quat)
         plt.plot(self.x)
         # plt.plot()
