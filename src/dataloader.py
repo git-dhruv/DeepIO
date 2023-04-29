@@ -14,6 +14,7 @@ import logging
 from os.path import join
 from tqdm import tqdm
 from utils import *
+from scipy.spatial.transform import Rotation
 
 
 class dataloader:
@@ -74,6 +75,28 @@ class dataloader:
         mocap = pd.read_csv(csvfiles[2])
         imu, rotor, mocap = imu[relevant_headers[0]
                                 ], rotor[relevant_headers[1]], mocap[relevant_headers[2]]
+        
+        R_imu_to_ned = np.array([[-1, 0, 0],
+                                [0, -1, 0],
+                                [0, 0, 1]])
+        R_imutoBody= np.array([[0, -1, 0],
+             [1, 0, 0],
+             [0,0,1]])
+        pos =  mocap[['pose.position.x', 'pose.position.y', 'pose.position.z']].to_numpy()
+        quats = mocap[['pose.orientation.x', 'pose.orientation.y', 'pose.orientation.z', 'pose.orientation.w']].to_numpy()
+        pos = R_imutoBody @ pos.T
+        eulers = []
+        for i in  range(quats.shape[0]):
+            R = R_imutoBody @ Rotation.from_quat(quats[i, :]).as_matrix()
+            quats[i, :] = Rotation.from_matrix(R).as_quat().flatten()
+            quat = Quaternion(scalar = quats[1, -1], vec= quats[i, 0:3])
+            eulers.append(np.flip(quat.euler_angles()))
+        eulers = np.array(eulers)
+        mocap['psi'] = eulers[:, 0]
+        mocap['theta'] = eulers[:, 1]
+        mocap['phi'] = eulers[:, 2]            
+
+
         return imu, rotor, mocap
 
     def runPipeline(self):
