@@ -158,10 +158,11 @@ class OnlineLearingFusion:
     def measurmentStep(self, measurments, dt, packet_num = 1):  
         from copy import deepcopy      #Planted here to frustrate you
         if packet_num==1:
-            # print(measurments[:3])
             Rot = self.getValidRotation(Rotation.from_euler('xyz', self.state[9:12].flatten()).as_matrix()).T
             measurments[:3] = (measurments[:3].reshape(-1,1) - Rot@self.grav.reshape(-1,1)).flatten()
-            # print(measurments[:3])
+
+            #Normalizing the accelerometer
+            measurments[:3] = 9.81*measurments[:3]/np.linalg.norm(measurments[:3])
             R = deepcopy(self.R_imu)
         else:
             R = deepcopy(self.R)
@@ -184,7 +185,7 @@ class OnlineLearingFusion:
             
 
             ####Adaptive R part####
-            beta = 0.001
+            beta = 1e-3
             #Angle Naive Residual Calculation
             residual = measurments.reshape(-1,1) - self.measurementModel(packet_num=packet_num)
             if packet_num==2:
@@ -277,23 +278,21 @@ class OnlineLearingFusion:
         self.quat = []
 
         for i in tqdm.tqdm(range(1,25000)):
-            # if i>1000
             dt = t[i] - t[i-1]
             self.propogateStep(self.state,rpm[:,i],dt)
-            """
-            Please Delete these if conditions to see the drift
-            """
-            measurementPacket = np.array([float(acc[0,i]),float(acc[1,i]),float(acc[2,i]),
-                                          float(gyro[0,i]),float(gyro[1,i]),float(gyro[2,i])])
-            measurementPacket2 = np.array([mocap[0,i],mocap[1,i],mocap[2,i],eulers[i,0],eulers[i,1],eulers[i,2]])
-            self.measurmentStep(measurementPacket, dt, packet_num=1 )
-            
-            if i%100==0:
-                self.measurmentStep(measurementPacket2, dt, packet_num=2)
-            
-            self.x.append(float(self.state[0]))
-            # self.quat.append(float(Rotation.from_quat(q[:,i]).as_euler('xyz')[0]))
-            self.quat.append(float(mocapTatti[0,i]))
+            if i%20==0:
+
+                measurementPacket = np.array([float(acc[0,i]),float(acc[1,i]),float(acc[2,i]),
+                                            float(gyro[0,i]),float(gyro[1,i]),float(gyro[2,i])])
+                measurementPacket2 = np.array([mocap[0,i],mocap[1,i],mocap[2,i],eulers[i,0],eulers[i,1],eulers[i,2]])
+                self.measurmentStep(measurementPacket, dt, packet_num=1 )
+                
+                if i%100==0:
+                    self.measurmentStep(measurementPacket2, dt, packet_num=2)
+                
+                self.x.append(float(self.state[0]))
+                # self.quat.append(float(Rotation.from_quat(q[:,i]).as_euler('xyz')[0]))
+                self.quat.append(float(mocapTatti[0,i]))
 
         plt.plot(self.quat)
         plt.plot(self.x)
