@@ -146,11 +146,12 @@ class OnlineLearingFusion:
             acc = R@(self.state[6:9].reshape(-1,1)+self.state[15:18].reshape(-1,1))
             return np.vstack((acc,gyro))
 
-    def measurmentStep(self, measurments, dt, packet_num = 1):        
-        # measurments[:3] = (measurments[:3].reshape(-1,1) - Rotation.from_euler('xyz', self.state[9:12].flatten()).as_matrix()@self.grav.reshape(-1,1)).flatten()
+    def measurmentStep(self, measurments, dt, packet_num = 1):  
+        if packet_num==1:
+            measurments[:3] = (measurments[:3].reshape(-1,1) - Rotation.from_euler('xyz', self.state[9:12].flatten()).as_matrix()@self.grav.reshape(-1,1)).flatten()
         y = measurments.reshape(-1,1) - self.measurementModel(packet_num= packet_num)
         H = self.calcJacobian(dt,measurment=packet_num)
-        S = H@self.covariance@H.T + self.R
+        S = H@self.covariance@H.T + self.R*10/packet_num
         K = self.covariance@H.T@np.linalg.inv(S)
         self.state = self.state + K@y
         q = Rotation.from_euler('xyz', self.state[9:12].flatten()).as_quat()
@@ -161,12 +162,13 @@ class OnlineLearingFusion:
 
     def runPipeline(self):
         ##--Load the Data--##
-        dataDir = r'C:\Users\aniru\Documents\01_UPenn\04_ESE6500\02_Homework\05_Project\DeepIO\data\clover'
+        dataDir = r'/Users/dhruv/Desktop/Penn/Sem2/ESE650/FinalProject/DeepIO\data\clover'
         loadDataUtil = dataloader(dataDir)
         loadDataUtil.runPipeline()
         loadDataUtil.homogenizeData()
         gyro, acc, rpm, mocap, q, t = loadDataUtil.convertDataToIndividualNumpy()
         perturbedMocap = loadDataUtil.perturbStates()[:,1:]
+        mocapTatti = mocap.copy()
         mocap = perturbedMocap[:,:3]
         quats = perturbedMocap[:,3:]
         
@@ -182,6 +184,7 @@ class OnlineLearingFusion:
              [1, 0, 0],
              [0,0,1]])
         mocap = R_imutoBody @ mocap.T
+        mocapTatti = R_imutoBody@mocapTatti
         eulers = []
         for i in range(quats.shape[0]):
             shit = R_imutoBody@Rotation.from_quat(quats[i, :]).as_matrix()
@@ -215,18 +218,17 @@ class OnlineLearingFusion:
             measurementPacket = np.array([float(acc[0,i]),float(acc[1,i]),float(acc[2,i]),
                                           float(gyro[0,i]),float(gyro[1,i]),float(gyro[2,i])])
             measurementPacket2 = np.array([mocap[0,i],mocap[1,i],mocap[2,i],eulers[i,0],eulers[i,1],eulers[i,2]])
-            # self.R[:3,:] = R[:3,:]*np.clip(np.linalg.norm(acc[:,i])/9,1,4)
-            # self.measurmentStep(measurementPacket, dt, packet_num=1 )
-            self.measurmentStep(measurementPacket2, dt, packet_num=2)
+            if np.trace(self.covariance)>=10000:
+                self.measurmentStep(measurementPacket2, dt, packet_num=2)
+            self.measurmentStep(measurementPacket, dt, packet_num=1 )
+            
             self.x.append(float(self.state[1]))
             # self.quat.append(float(Rotation.from_quat(q[:,i]).as_euler('xyz')[0]))
-            self.quat.append(float(mocap[1,i]))
-            # plt.imshow(self.covariance)
-            # plt.pause(0.01)
-
+            self.quat.append(float(mocapTatti[1,i]))
         
         plt.plot(self.quat)
         plt.plot(self.x)
+        # plt.plot()
         plt.show()
 
         return self.state
