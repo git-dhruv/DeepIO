@@ -19,9 +19,11 @@ from dynamicsSim import *
 from numpy import sin, cos
 import tqdm
 from copy import deepcopy
+from estimate_rot import ukfPipeline
+from complementary import *
 
 class OnlineLearningFusion:
-    def __init__(self,dataDir = r'C:\Users\aniru\Documents\01_UPenn\04_ESE6500\02_Homework\05_Project\DeepIO\data\clover'):
+    def __init__(self,dataDir = r'data\clover'):
         """
         Standard Multi Sensor Fusion Parameters
             - self.state: State of the quadrotor defined as [x, y, z, vx, vy, vz, ax, ay, az, psi, theta, phi, p, q, r, bax, bay, baz, bwx, bwy, bwz]
@@ -45,6 +47,7 @@ class OnlineLearningFusion:
         self.loadDataUtil = dataloader(dataDir)
         self.loadDataUtil.runPipeline()
         self.loadDataUtil.homogenizeData()
+
 
     def calcJacobian(self, dt, measurment= 1, omega = np.zeros(4)):
         """
@@ -157,7 +160,7 @@ class OnlineLearningFusion:
     def measurmentStep(self, measurments, dt, packet_num = 1, Adapt = True, beta = 0.7, alpha = 0.9):  
         if packet_num==1:
             Rot = self.getValidRotation(Rotation.from_euler('xyz', self.state[9:12].flatten()).as_matrix()).T
-            measurments[:3] = (measurments[:3].reshape(-1,1) - Rot@self.grav.reshape(-1,1)).flatten()
+            # measurments[:3] = (measurments[:3].reshape(-1,1) - Rot@self.grav.reshape(-1,1)).flatten()
 
             #Normalizing the accelerometer
             # measurments[:3] = 9.81*measurments[:3]/np.linalg.norm(measurments[:3])
@@ -175,6 +178,11 @@ class OnlineLearningFusion:
 
         #Kalman Gain
         K = self.covariance@H.T@np.linalg.inv(S)
+
+        """
+        if packet_num==self.IMU:
+            K = CNN(measurments,self.covariance,self.state)
+        """
 
         old_state = self.state.copy()
         self.state = self.state + K@y
@@ -252,6 +260,18 @@ class OnlineLearningFusion:
         mocap = R_imutoBody @ mocap.T
         Gtruth = R_imutoBody@ Gtruth
         eulers = []
+
+        # # plt.plot(gyro[0,:])
+        # # plt.plot(gyro[1,:])
+        # plt.plot(acc[-1,:])
+        # # plt.plot(mocap[0,:])
+        # # plt.plot(mocap[1,:])
+        # plt.plot(mocap[2,:])
+        # # plt.legend(["Acc X","Acc Y","Acc Z","mocap X", "Mocap Y"])
+        # plt.show()
+
+
+
         for i in range(quats.shape[0]):
             R_temp = R_imutoBody@Rotation.from_quat(quats[i, :]).as_matrix()
             quats[i, :] = Rotation.from_matrix(R_temp).as_quat().flatten()
@@ -262,15 +282,15 @@ class OnlineLearningFusion:
 
 
         #_________________Initialize State_________________________#
-        
+        # acc = -acc
         self.state += 1e-15
         self.state[:3] = mocap[:,0].reshape(-1,1)
         self.state[9:12] = eulers[0,:].reshape(-1,1)
         # self.state[9:12] = Rotation.from_quat(q[:,0].flatten()).as_euler('xyz').reshape(-1,1)
         self.state[18:] = gyro[:,:20].mean(axis=1).reshape(-1,1)
-        self.state[15:17] = acc[:2,:20].mean(axis=1).reshape(-1,1)
-        self.state[-3:] = sensor_biases.reshape(-1,1)
-        self.grav = -np.array([0,0,9.81]).reshape(-1,1)
+        self.state[15:18] = acc[:3,:20].mean(axis=1).reshape(-1,1)
+        # self.state[-3:] = sensor_biases.reshape(-1,1)
+        self.grav = np.array([0,0,9.81]).reshape(-1,1)
 
 
         ##--Loop--#
@@ -280,6 +300,31 @@ class OnlineLearningFusion:
         self.covariances.append(self.covariance)
         self.groundtruth = np.vstack((Gtruth, eulers.T)).T
         self.groundtruth = self.groundtruth[:25000, :]
+
+        # sol = ukfPipeline(acc[:,:15000], gyro[:,:15000], t[:15000])
+        # stateVector = sol.runPipeline()
+        # # roll, pitch, yaw are numpy arrays of length T
+        # r,p,y = sol.quat2rpy(stateVector[:4, :])
+        # # r,p = sol.calibrationOutput()
+        # R = Rotation.from_quat([q[0,0],q[1,0],q[2,0],q[3,0]])
+        # r = [0]*15000
+        # p = [0]*15000
+        # for i in tqdm.tqdm(range(1, 15000)):
+        #     dt = (t[i] - t[i - 1])
+        #     acc[-1,i] *= -1
+        #     R = complementary_filter_update(R, gyro[:,i-1], acc[:,i], dt)
+        #     p[i] = R.as_euler('XYZ', degrees=False)[0]
+        #     p[i] = R.as_euler('XYZ', degrees=False)[1]
+            
+
+        # plt.plot(r)
+        # plt.plot(eulers[:15000,0])
+        # # plt.plot(y)
+        # plt.show()
+        # plt.figure()
+        # plt.plot(p);plt.plot(eulers[:15000,1]);plt.show()
+        # raise NotImplementedError
+
 
         for i in tqdm.tqdm(range(1,25000)):
             dt = t[i] - t[i-1]

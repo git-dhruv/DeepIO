@@ -7,7 +7,7 @@ from dataloader import *
 
 
 
-tmp = dataloader("../data/clover")
+tmp = dataloader("data/clover")
 imu, rotor, mocap = tmp.runPipeline()
 gyrox,gyroy,gyroz = imu['angular_velocity.x'].to_numpy(),imu['angular_velocity.y'].to_numpy(),imu['angular_velocity.z'].to_numpy()
 accx,accy,accz = imu['linear_acceleration.x'].to_numpy(),imu['linear_acceleration.y'].to_numpy(),imu['linear_acceleration.z'].to_numpy()

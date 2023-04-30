@@ -30,14 +30,12 @@ class ukfPipeline:
             accel.astype(np.float64), gyro.astype(np.float64))
         self.timesteps = T
 
-        # import sys
-        # sys.exit(0)
         ## ---- Filter Setup----##
         # Define all the matrices
         # This is process noise
         self.R = np.diag([220, 220, 220, 100, 100, 50])
         # Observation Noise
-        self.Q = np.diag([2e-3,2e-3,2e-3,1.2*1e-4,1.2*1e-4,1.2*1e-4]) 
+        self.Q = np.diag([2e-3,2e-3,2e-3,1.2*1e-4,1.2*1e-4,1.2*1e-4]) *1e10
 
         # This is filter covariance -> sigma_k|k
         self.filterCov = np.diag([0, 0, 0.0, 0, 0, 0])
@@ -49,21 +47,20 @@ class ukfPipeline:
         return self.parseAccelerometer(accel), self.parseGyro(gyro)
 
     def parseAccelerometer(self, accel):
-        rawReading = accel  #[0,0,-9.81]
-        # Inverting first 2 rows according to the datasheet
-        # rawReading[-1, :] *= -1 #[0,0,9.81]
-        rawReading = self.G * rawReading / np.linalg.norm(rawReading, axis=0)
+        rawReading = accel  #[0,0,9.81]
+        # rawReading = self.G * rawReading / np.linalg.norm(rawReading, axis=0)
         return rawReading
 
     def convertAcc2Angle(self):
         # Pitch is tan2(y/z)
+        # self.accel[-1,:] = self.accel[-1,:] - self.G
         roll = np.arctan2(self.accel[1, :].flatten(),
                           self.accel[2, :].flatten())
         pitch = np.arctan2(
             -self.accel[0, :].flatten(),
             np.linalg.norm(self.accel[1:, :], axis=0).flatten(),
         )
-        return roll, pitch
+        return pitch,roll
 
     def parseGyro(self, gyro):
         gyroBias = self.gyro_bias
@@ -76,8 +73,8 @@ class ukfPipeline:
         Calibration util -> not used in filtering
         """
         roll, pitch = self.convertAcc2Angle()
-        roll, pitch, yaw = self.gyro[0, :], self.gyro[1, :], self.gyro[2, :]
-        return roll, pitch, yaw
+        # roll, pitch, yaw = self.gyro[0, :], self.gyro[1, :], self.gyro[2, :]
+        return roll, pitch
 
     def quaternionMeanGD(self, quats):
         """
@@ -296,43 +293,4 @@ def estimate_rot(data_num=1):
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
-    num = 2
-    vicon = io.loadmat("vicon/viconRot" + str(num) + ".mat")
-    roll, pitch, yaw = estimate_rot(num)
 
-    r = []
-    p = []
-    y = []
-    quat = Quaternion()
-    for i in range(vicon["rots"].shape[-1]):
-        R = vicon["rots"][:, :, i].reshape(3, 3)
-        quat.from_rotm(R)
-        quat.normalize()
-        ang = quat.euler_angles()
-        r.append(float(ang[0]))
-        p.append(float(ang[1]))
-        y.append(float(ang[2]))
-    r = np.array(r)
-    plt.figure()
-    plt.subplot(2, 2, 1)
-    plt.plot(r[: roll.shape[0]])
-    plt.plot(roll)
-    plt.legend(["Vicon","Filtered"])
-    plt.title("Roll Angle")
-    plt.ylabel("rad")
-
-    plt.subplot(2, 2, 2)
-    plt.plot(p[: roll.shape[0]])
-    plt.plot(pitch)
-    plt.legend(["Vicon","Filtered"])
-    plt.title("Pitch Angle")
-    plt.ylabel("rad")
-
-    plt.subplot(2, 2, 3)
-    plt.plot(y[: roll.shape[0]])
-    plt.plot(yaw)
-    plt.legend(["Vicon","Filtered"])
-    plt.title("Yaw Angle")
-    plt.ylabel("rad")
-
-    plt.show()
