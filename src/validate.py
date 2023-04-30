@@ -26,7 +26,7 @@ from imuModel import Model
 
 # torch.set_default_tensor_type('torch.c/ddduda.FloatTensor')
 
-dataDir = r"data/clover"
+dataDir = r"../data/clover"
 loadDataUtil = dataloader(dataDir)
 loadDataUtil.runPipeline()
 loadDataUtil.homogenizeData()
@@ -59,19 +59,24 @@ device = 'cuda:0'
 print('[SETUP] Establishing model and optimizer.')
 model = Model(device).to(device)
 
-model.load_state_dict(torch.load(r"C:\Users\dhruv\Desktop\Penn\Sem2\ESE650\FinalProject\DeepIO\model_4000.pth"))
+model.load_state_dict(torch.load(r"C:\Users\dhruv\Desktop\Penn\Sem2\ESE650\FinalProject\DeepIO\model_1000.pth"))
 model.eval()
 
 roll = []
 pitch = []
 
+from sklearn.preprocessing import MinMaxScaler
+
+measurements = np.vstack((acc,gyro)).T
+scaler_X = MinMaxScaler(feature_range=(0, 1))
+measurements = scaler_X.fit_transform(measurements)
+eulers = scaler_X.fit_transform(eulers)
+
 for i in tqdm.tqdm(range(500,25000)):
     dt = t[i] - t[i-1]
     # acc[:,i] = acc[:,i]/np.linalg.norm(acc[:,i])
     
-    measurementPacket = np.array([float(acc[0,i]),float(acc[1,i]),float(acc[2,i]),
-                                        float(gyro[0,i]),float(gyro[1,i]),float(gyro[2,i])])
-    measurementPacket = torch.tensor(measurementPacket).to(device)
+    measurementPacket = torch.tensor(measurements[i,:].flatten()).to(device)
     pred = model(measurementPacket.float())
     # print(pred)
     angs = pred.cpu().detach().numpy().flatten()

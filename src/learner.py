@@ -16,6 +16,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import LSTM
+from sklearn.preprocessing import MinMaxScaler
+
 # import os
 
 # os.environ['KMP_DUPLICATE_LIB_OK']='True'
@@ -64,6 +66,13 @@ while os.path.exists(workspace):
 os.makedirs(workspace)
 writer = SummaryWriter(workspace)
 
+measurements = np.vstack((acc,gyro)).T
+scaler_X = MinMaxScaler(feature_range=(0, 1))
+measurements = scaler_X.fit_transform(measurements)
+eulers = scaler_X.fit_transform(eulers)
+
+
+
 ##################################
 ## Define network and optimizer ##
 ##################################
@@ -71,11 +80,11 @@ writer = SummaryWriter(workspace)
 print('[SETUP] Establishing model and optimizer.')
 model = Model(device).to(device)
 # optimizer = torch.optim.SGD(model.parameters(), lr=5e-6, momentum=0.9)
-optimizer = torch.optim.Adam(model.parameters(), lr=8e-4)
+optimizer = torch.optim.Adam(model.parameters(), lr=1)
 # optimizer = torch.optim.Adadelta(params=model.parameters(), lr=1e-3)
 
 # model.load_state_dict(torch.load("C:\Dhruv Personal Files\RL\\agile_flight_dev_env\\agile_flight\model_120.pth"))
-model.load_state_dict(torch.load(r"C:\Users\dhruv\Desktop\Penn\Sem2\ESE650\FinalProject\DeepIO\model.pth"))
+# model.load_state_dict(torch.load(r"C:\Users\dhruv\Desktop\Penn\Sem2\ESE650\FinalProject\DeepIO\model.pth"))
 
 N_eps = 10000
 itrs = 0
@@ -218,7 +227,7 @@ batch_time = 15
 batch_size = TrainSize-100
 
 eulers = torch.tensor(eulers).to(device)
-measurements = np.vstack((acc,gyro))
+
 measurements = torch.tensor(measurements).to(device)
 for ep in range(N_eps):
     ep_loss = 0
@@ -231,7 +240,7 @@ for ep in range(N_eps):
         #     continue
     s = torch.from_numpy(np.random.choice(np.arange(size-batch_time, dtype=np.int64), batch_size, replace=False))
     
-    batch_x = (measurements[:,s].T).float()
+    batch_x = (measurements[s,:]).float()
     batch_y = eulers[s,:2].unsqueeze(0).float()
 
     # dt = t[i] - t[i-1]

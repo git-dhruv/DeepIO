@@ -67,6 +67,7 @@ class Model(nn.Module):
         x, _ = self.lstm(x)
         # RNN
         x, _ = self.rnn(x)
+        x= F.relu(x)
         # x = x.view(-1, 1).flatten()
         x = self.fc4(x)
         
