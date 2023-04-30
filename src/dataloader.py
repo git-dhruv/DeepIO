@@ -122,7 +122,7 @@ class dataloader:
         self.ConcatData['Time'] = self.ConcatData.index
         self.ConcatData.reset_index(drop=True, inplace=True)
 
-    def perturbStates(self, pos_noise=np.diag([0.0225, 0.0225, 0.0025]), orientation_noise=np.diag([0.1, 0.1, 0.1])):
+    def perturbStates(self, pos_noise=np.diag([0.0225, 0.0225, 0.0025]), orientation_noise=np.diag([1e-7, 1e-7, 1e-7])):
         """
         This function will perturb the states by adding noise to the states.
         Inputs:

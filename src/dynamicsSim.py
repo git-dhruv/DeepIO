@@ -39,7 +39,7 @@ class dynamics:
             x[:2] = oldpos
         else:
             pass
-        x[9:12] += x[12:15]*dt #Angles
+        # x[9:12] += x[12:15]*dt #Angles
         #Angular Velocities, Biases will remain the same
         return x
 

@@ -20,19 +20,20 @@ from numpy import sin, cos
 import tqdm
 from copy import deepcopy
 
-class OnlineLearingFusion:
-    def __init__(self):
+class OnlineLearningFusion:
+    def __init__(self,dataDir = r'C:\Users\aniru\Documents\01_UPenn\04_ESE6500\02_Homework\05_Project\DeepIO\data\clover'):
         """
         Standard Multi Sensor Fusion Parameters
             - self.state: State of the quadrotor defined as [x, y, z, vx, vy, vz, ax, ay, az, psi, theta, phi, p, q, r, bax, bay, baz, bwx, bwy, bwz]
         """
+        self.MotionCap = 2
+        self.IMU = 1 #1 for IMU, 2 for Motion Capture, Dynamics otherwise Will be used for calcJacobian, measurement model
+
         self.state = np.zeros((21, 1))
         self.covariance = np.zeros((21, 21))
 
-        #Kya hi hoga
-        self.R = np.eye(6,6)*100  #Measurement Noise
-        self.R[-3:,-3:] += 10*np.eye(3)
-        self.R_imu = deepcopy(self.R)
+        self.R = np.eye(6,6)*1.0  #Measurement Noise
+        self.R_imu = deepcopy(self.R)*100
 
         self.Q = np.eye(self.covariance.shape[0])*10
 
@@ -41,13 +42,11 @@ class OnlineLearingFusion:
 
         self.dynamics = dynamics()
 
-        """        
-        a = [(q0^2 - q1^2 - q2^2 - q3^2)ax + 2(q0q1 - q2q3)ay + 2(q0q2 + q1q3)az,
-        2(q0q1 + q2q3)ax + (q0^2 - q1^2 + q2^2 - q3^2)ay + 2(q1q2 - q0q3)az,
-        2(q0q2 - q1q3)ax + 2(q1q2 + q0*q3)*ay + (q0^2 - q1^2 - q2^2 + q3^2)*az]
-        """
+        self.loadDataUtil = dataloader(dataDir)
+        self.loadDataUtil.runPipeline()
+        self.loadDataUtil.homogenizeData()
 
-    def calcJacobian(self, dt, measurment=1, omega = np.zeros(4)):
+    def calcJacobian(self, dt, measurment= 1, omega = np.zeros(4)):
         """
         Returns the desired jacobian for the EKF
         Inputs:
@@ -71,28 +70,28 @@ class OnlineLearingFusion:
                                 cos(phi)*cos(psi) - sin(phi)*sin(theta)*sin(psi)],
                                 [0,                              cos(theta)*cos(psi), -cos(theta)*sin(psi)]])
         
-        if measurment == 1: #Returns the meassurement jacobian for the IMU 
+        if measurment == self.IMU: #Returns the meassurement jacobian for the IMU 
             self.MeasurmentJacobian = np.zeros((6, 21))
             dg_dpsi = Rdot_psi.T @ self.state[6:9].reshape(-1,1)
             dg_dtheta = Rdot_theta.T @ self.state[6:9].reshape(-1,1)
             dg_dphi = Rdot_phi.T @ self.state[6:9].reshape(-1,1)
-            self.MeasurmentJacobian[0:3, 6] = dg_dpsi.flatten()
+            self.MeasurmentJacobian[0:3, 8] = dg_dpsi.flatten()
             self.MeasurmentJacobian[0:3, 7] = dg_dtheta.flatten()
-            self.MeasurmentJacobian[0:3, 8] = dg_dphi.flatten()
+            self.MeasurmentJacobian[0:3, 6] = dg_dphi.flatten()
             dg_dpsi = Rdot_psi.T @ self.state[15:18].reshape(-1,1)
             dg_dtheta = Rdot_theta.T @ self.state[15:18].reshape(-1,1)
             dg_dphi = Rdot_phi.T @ self.state[15:18].reshape(-1,1)
             
-            self.MeasurmentJacobian[0:3, 15] = dg_dpsi.flatten()
+            self.MeasurmentJacobian[0:3, 17] = dg_dpsi.flatten()
             self.MeasurmentJacobian[0:3, 16] = dg_dtheta.flatten()
-            self.MeasurmentJacobian[0:3, 17] = dg_dphi.flatten()
+            self.MeasurmentJacobian[0:3, 15] = dg_dphi.flatten()
 
             dg_dpsi = Rdot_psi.T @ self.state[12:15].reshape(-1,1)
             dg_dtheta = Rdot_theta.T @ self.state[12:15].reshape(-1,1)
             dg_dphi = Rdot_phi.T @ self.state[12:15].reshape(-1,1)
-            self.MeasurmentJacobian[3:6, 12] = dg_dpsi.flatten()
+            self.MeasurmentJacobian[3:6, 14] = dg_dpsi.flatten()
             self.MeasurmentJacobian[3:6, 13] = dg_dtheta.flatten()
-            self.MeasurmentJacobian[3:6, 14] = dg_dphi.flatten()
+            self.MeasurmentJacobian[3:6, 12] = dg_dphi.flatten()
             
             dg_dpsi = Rdot_psi.T @ self.state[18:].reshape(-1,1)
             dg_dtheta = Rdot_theta.T @ self.state[18:].reshape(-1,1)
@@ -102,7 +101,7 @@ class OnlineLearingFusion:
             self.MeasurmentJacobian[3:6, 20] = dg_dphi.flatten()
             return self.MeasurmentJacobian
         
-        elif measurment == 2: #Returns measurement jacobian for motion capture input
+        elif measurment == self.MotionCap: #Returns measurement jacobian for motion capture input
             self.MeasurmentJacobian = np.zeros((6, 21))
             self.MeasurmentJacobian[0:3, 0:3] = np.eye(3)
             self.MeasurmentJacobian[3:6, 9:12] = np.eye(3)
@@ -118,11 +117,11 @@ class OnlineLearingFusion:
             # jacobian[0:3, 6:9] = np.eye(3)*dt*dt*0.5
             
             
-            jacobian[6:9, 9] = - Rdot_psi @ np.array([0,0, u.sum()/0.9])
+            jacobian[6:9, 11] = - Rdot_psi @ np.array([0,0, u.sum()/0.9])
             jacobian[6:9, 10] = - Rdot_theta @ np.array([0,0, u.sum()/0.9])
-            jacobian[6:9, 11] = - Rdot_phi @ np.array([0,0, u.sum()/0.9])
+            jacobian[6:9, 9] = - Rdot_phi @ np.array([0,0, u.sum()/0.9])
             jacobian[9:21, 9:21] = np.eye(12)
-            jacobian[9:12, 12:15] = np.eye(3)*dt
+            jacobian[9:12, 12:15] = 0.0 #np.eye(3)*dt
 
             self.PropogationJacobian = jacobian
             return self.PropogationJacobian
@@ -135,9 +134,9 @@ class OnlineLearingFusion:
     def measurementModel(self, packet_num = 1):
         #x,y,z,vx,vy,vz,acc,acc,acc,r,p,y,wx,wy,wz,acb,ac
 
-        if packet_num == 2:
+        if packet_num == 2: #Motion capture
             return np.vstack((self.state[0:3], self.state[9:12]))
-        else:
+        else:            #IMU
             #Rotation of IMU wrt NED
             R = Rotation.from_euler('xyz',self.state[9:12].flatten()).as_matrix()
             #Rotation of NED wrt imu
@@ -155,22 +154,26 @@ class OnlineLearingFusion:
             R = U@Smod@Vt
         return R
 
-    def measurmentStep(self, measurments, dt, packet_num = 1):  
-        from copy import deepcopy      #Planted here to frustrate you
+    def measurmentStep(self, measurments, dt, packet_num = 1, Adapt = True, beta = 0.7, alpha = 0.9):  
         if packet_num==1:
             Rot = self.getValidRotation(Rotation.from_euler('xyz', self.state[9:12].flatten()).as_matrix()).T
             measurments[:3] = (measurments[:3].reshape(-1,1) - Rot@self.grav.reshape(-1,1)).flatten()
 
             #Normalizing the accelerometer
-            measurments[:3] = 9.81*measurments[:3]/np.linalg.norm(measurments[:3])
+            # measurments[:3] = 9.81*measurments[:3]/np.linalg.norm(measurments[:3])
             R = deepcopy(self.R_imu)
         else:
             R = deepcopy(self.R)
 
-
+        #Innovation calculation
         y = measurments.reshape(-1,1) - self.measurementModel(packet_num= packet_num)
+        #Measurement Jacobian
         H = self.calcJacobian(dt,measurment=packet_num)
+
+        #Used for AdaptiveEKF, S is the covariance of mear
         S = H@self.covariance@H.T + R
+
+        #Kalman Gain
         K = self.covariance@H.T@np.linalg.inv(S)
 
         old_state = self.state.copy()
@@ -180,20 +183,16 @@ class OnlineLearingFusion:
 
         self.state[9:12] = Rotation.from_quat(q).as_euler('xyz').reshape(-1,1)
 
-        
-        if 1:
-            
-
-            ####Adaptive R part####
-            beta = 1e-3
+        #Apadtive EKF
+        if Adapt:
             #Angle Naive Residual Calculation
             residual = measurments.reshape(-1,1) - self.measurementModel(packet_num=packet_num)
-            if packet_num==2:
+            if packet_num == self.MotionCap:
                 #Nearest rotation residuals -> doesnt matter the directions
                 residual[3:] = np.arctan2(np.sin(residual[3:]),np.cos(residual[3:]))
 
-            if packet_num==1:
-                residual[:3] = residual[:3]*np.clip(np.linalg.norm(measurments[:3])/10,1,None)
+            # if packet_num==1:
+            #     residual[:3] = residual[:3]*np.clip(np.linalg.norm(measurments[:3])/10,1,None)
 
             R = beta*R + (1-beta)*(residual@residual.T+H@self.covariance@H.T)
             
@@ -207,15 +206,14 @@ class OnlineLearingFusion:
 
             self.state[9:12] = Rotation.from_quat(q).as_euler('xyz').reshape(-1,1)
             ####Adaptive Q part Doesnt work for some reason####
-            if False:
-                alpha = 0.8  #half life!?
-                #There are two formulas, 2nd one works this one might not
-                self.Q = alpha*self.Q + (1-alpha)*(K@y@y.T@K.T)
+            # if True:
+            #     #There are two formulas, 2nd one works this one might not
+            #     self.Q = alpha*self.Q + (1-alpha)*(K@y@y.T@K.T)
                 
         #Covariance Update
         self.covariance = (np.eye(21) - K@H)@self.covariance
 
-        if packet_num==1:
+        if packet_num== self.IMU:
             self.R_imu = deepcopy(R)
         else:
             self.R = deepcopy(R)
@@ -224,87 +222,87 @@ class OnlineLearingFusion:
 
 
         if np.all(np.linalg.eigvals(self.Q) < 0) or np.all(np.linalg.eigvals(self.R) < 0):
-            print("Locha Lafda")
+            print("AdaptiveEKF Q or R is not positive definite")
 
 
-    def runPipeline(self):
-        ##--Load the Data--##
-        dataDir = r'/Users/dhruv/Desktop/Penn/Sem2/ESE650/FinalProject/DeepIO\data\clover'
-        loadDataUtil = dataloader(dataDir)
-        loadDataUtil.runPipeline()
-        loadDataUtil.homogenizeData()
-        gyro, acc, rpm, mocap, q, t = loadDataUtil.convertDataToIndividualNumpy()
-        perturbedMocap = loadDataUtil.perturbStates()[:,1:]
-        mocapTatti = mocap.copy()
+    def runPipeline(self,  
+                    Adapt = True, sensor_biases = np.array([1000.0, 130, -150.0]), IMU_step = 20, MotionCap_step = 1000, beta = 0.3, alpha = 0.9):
+        #____________________________Load Data____________________________#
+        
+        
+        gyro, acc, rpm, mocap, q, t = self.loadDataUtil.convertDataToIndividualNumpy()
+        perturbedMocap = self.loadDataUtil.perturbStates()[:,1:]
+        
+        Gtruth = mocap.copy()
         mocap = perturbedMocap[:,:3]
         quats = perturbedMocap[:,3:]
         
 
         
 
-        ##--Rotate the Motion Capture to IMU frame from Body Frame --#
+        #____________Rotate the Motion Capture to IMU frame from Body Frame_______#
         # R from imu to ned Frame
         R_imu_to_ned = np.array([[-1, 0, 0],
-                                [0, -1, 0],
-                                [0, 0, 1]])
-        R_imutoBody= np.array([[0, -1, 0],
-             [1, 0, 0],
-             [0,0,1]])
+                                 [0, -1, 0],
+                                 [0,  0, 1]])
+        R_imutoBody= np.array([ [0, -1, 0],
+                                [1,  0, 0],
+                                [0,  0, 1]])
+        
         mocap = R_imutoBody @ mocap.T
-        mocapTatti = R_imutoBody@mocapTatti
+        Gtruth = R_imutoBody@ Gtruth
         eulers = []
         for i in range(quats.shape[0]):
-            shit = R_imutoBody@Rotation.from_quat(quats[i, :]).as_matrix()
-            quats[i, :] = Rotation.from_matrix(shit).as_quat().flatten()
+            R_temp = R_imutoBody@Rotation.from_quat(quats[i, :]).as_matrix()
+            quats[i, :] = Rotation.from_matrix(R_temp).as_quat().flatten()
             quat = Quaternion(scalar = quats[i, -1], vec = quats[i, 0:3])
-            eulers.append(np.flip(quat.euler_angles()))
+            eulers.append(quat.euler_angles())
         eulers = np.array(eulers)
         
 
 
-        ##--Initialization--#
+        #_________________Initialize State_________________________#
+        
         self.state += 1e-15
         self.state[:3] = mocap[:,0].reshape(-1,1)
-        self.state[9:12] = Rotation.from_quat(q[:,0].flatten()).as_euler('xyz').reshape(-1,1)
+        self.state[9:12] = eulers[0,:].reshape(-1,1)
+        # self.state[9:12] = Rotation.from_quat(q[:,0].flatten()).as_euler('xyz').reshape(-1,1)
         self.state[18:] = gyro[:,:20].mean(axis=1).reshape(-1,1)
         self.state[15:17] = acc[:2,:20].mean(axis=1).reshape(-1,1)
-
-        # self.grav = acc[:,:20].mean(axis=1).reshape(-1,1)
+        self.state[-3:] = sensor_biases.reshape(-1,1)
         self.grav = -np.array([0,0,9.81]).reshape(-1,1)
-        # print(acc[-1,:2])
+
 
         ##--Loop--#
-        self.x = []
-        self.quat = []
+        self.estimates = []
+        self.estimates.append(self.state)
+        self.covariances = []
+        self.covariances.append(self.covariance)
+        self.groundtruth = np.vstack((Gtruth, eulers.T)).T
+        self.groundtruth = self.groundtruth[:25000, :]
 
         for i in tqdm.tqdm(range(1,25000)):
             dt = t[i] - t[i-1]
             self.propogateStep(self.state,rpm[:,i],dt)
-            if i%20==0:
+            if i%IMU_step == 0:
 
                 measurementPacket = np.array([float(acc[0,i]),float(acc[1,i]),float(acc[2,i]),
                                             float(gyro[0,i]),float(gyro[1,i]),float(gyro[2,i])])
                 measurementPacket2 = np.array([mocap[0,i],mocap[1,i],mocap[2,i],eulers[i,0],eulers[i,1],eulers[i,2]])
-                self.measurmentStep(measurementPacket, dt, packet_num=1 )
+                self.measurmentStep(measurementPacket, dt, packet_num = self.IMU, Adapt = Adapt, beta =beta)
                 
-                if i%100==0:
-                    self.measurmentStep(measurementPacket2, dt, packet_num=2)
+                if i%MotionCap_step == 0:
+                    self.measurmentStep(measurementPacket2, dt, packet_num = self.MotionCap, Adapt = Adapt, beta = beta)
                 
-                self.x.append(float(self.state[0]))
-                # self.quat.append(float(Rotation.from_quat(q[:,i]).as_euler('xyz')[0]))
-                self.quat.append(float(mocapTatti[0,i]))
+            self.estimates.append(self.state)
+            self.covariances.append(self.covariance)
+        
+        self.estimates = np.array(self.estimates).reshape(-1,21)
+        self.covariances = np.array(self.covariances).reshape(-1,21,21)
 
-        plt.plot(self.quat)
-        plt.plot(self.x)
-        # plt.plot()
-        plt.show()
-
-        return self.state
-
-    def plotSampleOutput(self):
-        raise NotImplementedError
+        return self.estimates, self.covariances, self.groundtruth, gyro, acc, perturbedMocap, eulers
 
 
 if __name__ == '__main__':
-    learner = OnlineLearingFusion()
+    learner = OnlineLearningFusion()
     learner.runPipeline()
