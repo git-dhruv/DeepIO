@@ -25,8 +25,7 @@ class Model(nn.Module):
     def __init__(self, device):
         super().__init__()   
         #Input -> g3 ac3 and previous angles -> 3 + dt    -> 10
-        self.fc1 = nn.Linear(10, 32, bias=False)
-        self.fc2 = nn.Linear(32, 128, bias=False)
+        self.fc1 = nn.Linear(10, 128, bias=False)
         # Added LSTM
         self.lstm = LSTM(input_size=128, hidden_size=48,
                          num_layers=5, dropout=0.3)
@@ -37,8 +36,6 @@ class Model(nn.Module):
     def forward(self, x):
         # measurementPacket,eulers[i-1,:],dt
         x = self.fc1(x)
-        x = F.leaky_relu(x)
-        x = self.fc2(x)
         x = F.leaky_relu(x)
 
         x = x.unsqueeze(0)
@@ -55,7 +52,7 @@ class Model(nn.Module):
 
 
 
-# torch.set_default_tensor_type('torch.cuda.FloatTensor')
+# torch.set_default_tensor_type('torch.c/ddduda.FloatTensor')
 
 dataDir = r"data/clover"
 loadDataUtil = dataloader(dataDir)
@@ -81,22 +78,18 @@ for i in range(quats.shape[0]):
 eulers = np.array(eulers)
 
 device = 'cuda:0'
-device = 'cpu'
+# device = 'cpu'
 
+basedir = r'src'
 expname = datetime.now().strftime('d%m_%d_t%H_%M')
-workspace = opj( "/logs/", expname)
+workspace = opj(basedir, "logs/", expname)
 wkspc_ctr = 2
 
 while os.path.exists(workspace):
-    workspace = opj("/logs/", expname+f'_{str(wkspc_ctr)}')
+    workspace = opj(basedir,"logs/", expname+f'_{str(wkspc_ctr)}')
     wkspc_ctr += 1
 os.makedirs(workspace)
 writer = SummaryWriter(workspace)
-
-###############
-## Load data ##
-###############
-
 
 ##################################
 ## Define network and optimizer ##
@@ -111,17 +104,16 @@ optimizer = torch.optim.Adam(model.parameters(), lr=1e-6)
 
 # model.load_state_dict(torch.load("C:\Dhruv Personal Files\RL\\agile_flight_dev_env\\agile_flight\model_120.pth"))
 
-N_eps = 400
+N_eps = 4
 itrs = 0
 print(f'[TRAIN] Training for {N_eps} epochs.')
 total_itr = 0
 # eulers = torch.tensor(eulers).to(device)
 for ep in range(N_eps):
     ep_loss = 0
-    if ep % 40 == 0:
-        path = ""
-        torch.save(model.state_dict(), path+f"model_{ep}.pth")
-    for i in tqdm.tqdm(range(1,t.shape[0])):
+    path = ""
+    torch.save(model.state_dict(), path+f"model_{ep}.pth")
+    for i in tqdm.tqdm(range(1,t.shape[0]-1000)):
         dt = t[i] - t[i-1]
         measurementPacket = np.array([float(acc[0,i]),float(acc[1,i]),float(acc[2,i]),
                                             float(gyro[0,i]),float(gyro[1,i]),float(gyro[2,i]),
@@ -139,7 +131,7 @@ for ep in range(N_eps):
         loss.backward()
         optimizer.step()
 
-        if i % 1000 == 0:
+        if i % 20000 == 0:
             tqdm_text = f'Loss = {loss:4f}'
             print(tqdm_text)
             # tqdm.write(tqdm_text)
