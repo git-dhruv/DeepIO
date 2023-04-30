@@ -9,12 +9,13 @@ import pandas as pd
 import os
 import sys
 
-from bagpy import bagreader
+# from bagpy import bagreader
 import logging
 from os.path import join
 from tqdm import tqdm
 from utils import *
 from scipy.spatial.transform import Rotation
+import glob
 
 
 class dataloader:
@@ -65,11 +66,14 @@ class dataloader:
                              'pose.orientation.w']]
         csvfiles = []
 
-        bagrdr = bagreader(file)
-        for topic in bagrdr.topics:
-            if topic in relevant_topics:
-                data = bagrdr.message_by_topic(topic)
-                csvfiles.append(data)
+        # bagrdr = bagreader(file)
+        # for topic in bagrdr.topics:
+        #     if topic in relevant_topics:
+        #         data = bagrdr.message_by_topic(topic)
+        #         csvfiles.append(data)
+        csvfiles =  [r"data\clover\yawConstant\New folder\rosbag\blackbird-imu.csv",
+                     r"data\clover\yawConstant\New folder\rosbag\blackbird-rotor_rpm.csv",
+                     r"data\clover\yawConstant\New folder\rosbag\blackbird-state.csv"]
         imu = pd.read_csv(csvfiles[0])
         rotor = pd.read_csv(csvfiles[1])
         mocap = pd.read_csv(csvfiles[2])
