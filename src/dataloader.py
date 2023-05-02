@@ -20,7 +20,7 @@ import glob
 
 class dataloader:
 
-    def __init__(self, location,parseagain=1):
+    def __init__(self, location,dontparse=0):
         self.folder = os.path.abspath(
             os.path.expanduser(os.path.expandvars(location)))
         self.cases = os.listdir(self.folder)
@@ -29,7 +29,7 @@ class dataloader:
         self.mocap_data = None
         self.ConcatData = None
 
-        self.bagParsed = parseagain
+        self.bagParsed = dontparse
         # self.setupLogging()
         # logging.info("Dataloader Started")
 
