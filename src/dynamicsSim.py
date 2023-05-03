@@ -36,7 +36,8 @@ class dynamics:
         x[3:6] += x[6:9]*dt
         R_b_w = self.getValidRotation(Rotation.from_euler('xyz', x[9:12].flatten()).as_matrix())
         x[6:9] = (R_b_w@(imu[:3].reshape(-1,1) - x[15:18].reshape(-1,1)) + np.array([0,0,9.81]).reshape(-1,1))
-        # x[6:9] /= np.linalg.norm(x[6:9])
+        if np.linalg.norm(x[6:9])>2:
+            x[6:9] /= np.linalg.norm(x[6:9])*0.5
         #Angular Dynamics
         x[9:12] += x[12:15]*dt
         x[12:15]  = imu[3:].reshape(-1,1) - x[18:].reshape(-1,1)

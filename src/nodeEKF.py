@@ -61,7 +61,7 @@ class OnlineLearningFusion:
         self.R = np.eye(3,3)  #Mocap Measurment Noise
         self.R_imu = deepcopy(np.eye(3,3)*1.0)*100  #NN IMU Measrument Noise
 
-        self.Q = np.eye(self.covariance.shape[0])/10  #State Update through IMU
+        self.Q = np.eye(self.covariance.shape[0])*1e10  #State Update through IMU
 
         #Nobody should use these shit variables
         self.PropogationJacobian = None
@@ -408,7 +408,7 @@ if __name__ == '__main__':
     learner = OnlineLearningFusion()
     #Run Pipeline
     estimate, covariance, ground_truth, gyro, acc, perturbedMocap, eulers = learner.runPipeline(
-    Adapt=1, IMU_step=20, MotionCap_step=1000, sensor_biases=np.array([1000.0, 130, -150.0]), beta=0.8)
+    Adapt=1, IMU_step=20, MotionCap_step=1000, sensor_biases=np.array([1000.0, 130, -150.0]), beta=0.1)
     #Plots 
     fig, axs = plt.subplots(2, 3, figsize=(20, 10))
 
