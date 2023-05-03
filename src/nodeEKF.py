@@ -352,9 +352,9 @@ class OnlineLearningFusion:
         self.covariances = []
         self.covariances.append(self.covariance)
         self.groundtruth = np.vstack((Gtruth, eulers.T)).T
-        # self.groundtruth = self.groundtruth[:25000, :]
+        self.groundtruth = self.groundtruth[:25000, :]
 
-        for i in tqdm.tqdm(range(1,self.groundtruth.shape[0])):
+        for i in tqdm.tqdm(range(1,25000)):
 
 
             #---------------- Propogation ---------------#
@@ -390,7 +390,7 @@ class OnlineLearningFusion:
                 #Packet for Motion Capture
                 measurementPacket2 = np.array([mocap[0,i],mocap[1,i],mocap[2,i]])         
                 #Measurement Update Step
-                self.measurmentStep(measurementPacket2, dt, packet_num = self.MotionCap, Adapt = Adapt, beta = beta)
+                self.measurmentStep(measurementPacket2, dt, packet_num = self.MotionCap, Adapt = 1-Adapt, beta = beta)
 
 
             #----------- Loggers -----------------#                
@@ -408,7 +408,7 @@ if __name__ == '__main__':
     learner = OnlineLearningFusion()
     #Run Pipeline
     estimate, covariance, ground_truth, gyro, acc, perturbedMocap, eulers = learner.runPipeline(
-    Adapt=1, IMU_step=20, MotionCap_step=1000, sensor_biases=np.array([1000.0, 130, -150.0]), beta=0.6)
+    Adapt=1, IMU_step=20, MotionCap_step=1000, sensor_biases=np.array([1000.0, 130, -150.0]), beta=0.8)
     #Plots 
     fig, axs = plt.subplots(2, 3, figsize=(20, 10))
 
