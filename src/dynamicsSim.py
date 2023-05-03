@@ -21,12 +21,20 @@ class dynamics:
         # Izz: 0.0069
         # armLength: 0.08
         # propHeight: 0.023
+    def getValidRotation(self, R):
+        for _ in range(3):
+            R = np.round(R,2)
+            U,_,Vt = np.linalg.svd(R)
+            Smod = np.eye(3)
+            Smod[-1,-1] = np.linalg.det(U@Vt)
+            R = U@Smod@Vt
+        return R
 
     def propogateIMUDynamics(self, x,imu,dt):
         #Lateral Dynamics
         x[:3] += dt*x[3:6].reshape(-1,1) + 0.5*dt*dt*x[6:9].reshape(-1,1)
         x[3:6] += x[6:9]*dt
-        R_b_w = np.round(Rotation.from_euler('xyz', x[9:12].flatten()).as_matrix(),3)
+        R_b_w = self.getValidRotation(Rotation.from_euler('xyz', x[9:12].flatten()).as_matrix())
         x[6:9] = (R_b_w@(imu[:3].reshape(-1,1) - x[15:18].reshape(-1,1)) + np.array([0,0,9.81]).reshape(-1,1))
         # x[6:9] /= np.linalg.norm(x[6:9])
         #Angular Dynamics

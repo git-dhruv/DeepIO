@@ -2,8 +2,11 @@
 @author: Anirudh Kailaje, Dhruv Parikh
 @date: 4/24/2023
 @Description: EKF for quadrotor state estimation by fusing IMU and Noisy Capture Data. 
-We propose a Neural Network that converts a 
+Version: 5.0 - Probably Final
 """
+
+
+
 import numpy as np
 import matplotlib.pyplot as plt
 from dataloader import *
@@ -13,6 +16,8 @@ import tqdm
 from copy import deepcopy
 import torch
 import torch.nn as nn
+
+#This is not recommended 
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 
@@ -44,23 +49,28 @@ class OnlineLearningFusion:
         self.model.load_state_dict(torch.load('src/NN_Euler.pt',map_location=torch.device('cpu')))
         self.model.eval()
 
+        #Flags for Combining various sensors and dynamics 
         self.MotionCap = 2
         self.IMU = 1 #1 for IMU, 2 for Motion Capture, Dynamics otherwise Will be used for calcJacobian, measurement model
         self.NN = 10
 
+        #State and Covariance
         self.state = np.zeros((21, 1))
         self.covariance = np.zeros((21, 21))
 
-        self.R = np.eye(3,3)*1.0  #Measurement Noise
-        self.R_imu = deepcopy(np.eye(3,3)*1.0)*1000
+        self.R = np.eye(3,3)/1e5  #Mocap Measurment Noise
+        self.R_imu = deepcopy(np.eye(3,3)*1.0)*100  #NN IMU Measrument Noise
 
-        self.Q = np.eye(self.covariance.shape[0])*10
+        self.Q = np.eye(self.covariance.shape[0])/10  #State Update through IMU
 
+        #Nobody should use these shit variables
         self.PropogationJacobian = None
         self.MeasurmentJacobian = None
 
+        #Dynamics Class
         self.dynamics = dynamics()
 
+        #Load Data Class
         self.loadDataUtil = dataloader(dataDir)
         self.loadDataUtil.runPipeline()
         self.loadDataUtil.homogenizeData()
@@ -132,11 +142,7 @@ class OnlineLearningFusion:
             J = np.zeros((3, 21))
             J[:,0:3] = np.eye(3)
             return J
-        
-            self.MeasurmentJacobian = np.zeros((6, 21))
-            self.MeasurmentJacobian[0:3, 0:3] = np.eye(3)
-            self.MeasurmentJacobian[3:6, 9:12] = np.eye(3)
-            return self.MeasurmentJacobian
+
         else: #Returns the dynamics Jacobian
             """
             Thought:
@@ -155,22 +161,14 @@ class OnlineLearningFusion:
             dg_dpsi = Rdot_psi @ self.state[6:9].reshape(-1,1)
             dg_dtheta = Rdot_theta @ self.state[6:9].reshape(-1,1)
             dg_dphi = Rdot_phi @ self.state[6:9].reshape(-1,1)
-            # jacobian[6:9, 8] = dg_dpsi.flatten()
-            # jacobian[6:9, 7] = dg_dtheta.flatten()
-            # jacobian[6:9, 6] = dg_dphi.flatten()
             jacobian[6:9,6:9] = np.eye(3)
             jacobian[6:9,15:18] = -np.eye(3)
+
             # x,y,z,vx,vy,vz,acc,acc,acc,r,p,y,wx,wy,wz,acb,ac
             #Acceleration Biases in acceleration
             dg_dpsi = Rdot_psi @ self.state[15:18].reshape(-1,1)
             dg_dtheta = Rdot_theta @ self.state[15:18].reshape(-1,1)
             dg_dphi = Rdot_phi @ self.state[15:18].reshape(-1,1)
-
-
-            
-            # jacobian[6:9, 17] = -dg_dpsi.flatten()
-            # jacobian[6:9, 16] = -dg_dtheta.flatten()
-            # jacobian[6:9, 15] = -dg_dphi.flatten()
 
             #Angles
             jacobian[9:12,9:12] = np.eye(3)
@@ -218,8 +216,11 @@ class OnlineLearningFusion:
             return np.vstack((acc,gyro))
         
     def getValidRotation(self, R):
+        """
+        Least Squares Optimization for Rotation matrices in closest rotation for rounding errors
+        """
         for _ in range(3):
-            R = np.round(R,2)
+            R = np.round(R,3)
             U,_,Vt = np.linalg.svd(R)
             Smod = np.eye(3)
             Smod[-1,-1] = np.linalg.det(U@Vt)
@@ -298,7 +299,7 @@ class OnlineLearningFusion:
 
 
     def runPipeline(self,  
-                    Adapt = False, sensor_biases = np.array([1000.0, 130, -150.0]), IMU_step = 20, MotionCap_step = 1000, beta = 0.7, alpha = 0.3):
+                    Adapt = False, sensor_biases = np.array([1000.0, 130, -150.0]), IMU_step = 20, MotionCap_step = 1000, beta = 0.5, alpha = 0.3):
         #____________________________Load Data____________________________#
         
         
@@ -354,25 +355,45 @@ class OnlineLearningFusion:
         self.groundtruth = self.groundtruth[:25000, :]
 
         for i in tqdm.tqdm(range(1,25000)):
-            dt = t[i] - t[i-1]
-            # self.propogateStep2(self.state,rpm[:,i],dt)
 
+
+            #---------------- Propogation ---------------#
+            #Time Difference
+            dt = t[i] - t[i-1]
+
+            #Preparing IMU packet for State Propogation
             imuPacket = np.array([float(acc[0,i]),float(acc[1,i]),float(acc[2,i]),
                                             float(gyro[0,i]),float(gyro[1,i]),float(gyro[2,i])])
-            self.propogateStep(self.state,imuPacket,dt)
 
+            #To remove non linearity in jacobian we need to iterate 10 times in single time frame
+            for j in range(10):
+                self.propogateStep(self.state,imuPacket,dt/10)
+
+
+
+
+            #---------------- Neural Network ---------------#
+            #Sensor Packet for Neural Network Propogation
             neuralPacket = np.array([float(acc[0,i]),float(acc[1,i]),float(acc[2,i]),
                 float(gyro[0,i]),float(gyro[1,i]),float(gyro[2,i]),0,0,-9.8])
+            #Converting to tensor
             neuralInput = torch.tensor(neuralPacket,dtype=torch.float64)
+            #Model Forward
             nnPacket = self.model(neuralInput).cpu().detach().numpy()
-            # nnPacket = 0.8*self.state[9:12].reshape(-1,1) + 0.2*nnPacket.reshape(-1,1)
-            self.measurmentStep(nnPacket, dt, packet_num = self.NN, Adapt = Adapt, beta = beta)
-            
-            measurementPacket2 = np.array([mocap[0,i],mocap[1,i],mocap[2,i],eulers[i,0],eulers[i,1],eulers[i,2]])                
-            measurementPacket2 = np.array([mocap[0,i],mocap[1,i],mocap[2,i]])                
+            # nnPacket = 0.6*self.state[9:12].reshape(-1,1) + 0.4*nnPacket.reshape(-1,1)
+
+            #Measurment step
+            self.measurmentStep(nnPacket, dt, packet_num = self.NN, Adapt =Adapt, beta = beta)
+
+            #----------- Motion Capture ------------#               
             if i%MotionCap_step == 0:
+                #Packet for Motion Capture
+                measurementPacket2 = np.array([mocap[0,i],mocap[1,i],mocap[2,i]])         
+                #Measurement Update Step
                 self.measurmentStep(measurementPacket2, dt, packet_num = self.MotionCap, Adapt = Adapt, beta = beta)
-                
+
+
+            #----------- Loggers -----------------#                
             self.estimates.append(self.state)
             self.covariances.append(self.covariance)
         
@@ -383,9 +404,12 @@ class OnlineLearningFusion:
 
 
 if __name__ == '__main__':
+    #Define the class
     learner = OnlineLearningFusion()
+    #Run Pipeline
     estimate, covariance, ground_truth, gyro, acc, perturbedMocap, eulers = learner.runPipeline(
-    Adapt=1, IMU_step=20, MotionCap_step=1000, sensor_biases=np.array([1000.0, 130, -150.0]))
+    Adapt=0, IMU_step=20, MotionCap_step=1000, sensor_biases=np.array([1000.0, 130, -150.0]), beta=0.1)
+    #Plots 
     fig, axs = plt.subplots(2, 3, figsize=(20, 10))
 
     axs[0, 0].plot(estimate[:, 0], label='estimate_x')
