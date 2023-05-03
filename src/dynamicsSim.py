@@ -22,6 +22,23 @@ class dynamics:
         # armLength: 0.08
         # propHeight: 0.023
 
+    def propogateIMUDynamics(self, x,imu,dt):
+        #Lateral Dynamics
+        x[:3] += dt*x[3:6].reshape(-1,1) + 0.5*dt*dt*x[6:9].reshape(-1,1)
+        x[3:6] += x[6:9]*dt
+        R_b_w = np.round(Rotation.from_euler('xyz', x[9:12].flatten()).as_matrix(),3)
+        x[6:9] = (R_b_w@(imu[:3].reshape(-1,1) - x[15:18].reshape(-1,1)) + np.array([0,0,9.81]).reshape(-1,1))
+        # x[6:9] /= np.linalg.norm(x[6:9])
+        #Angular Dynamics
+        x[9:12] += x[12:15]*dt
+        x[12:15]  = imu[3:].reshape(-1,1) - x[18:].reshape(-1,1)
+        x[2] = np.clip(x[2],None, 0.4)
+
+        # x[:3] = np.clip(x[:3],None,0.4) #Min height babey
+        return x
+
+
+
     def propogateDynamics(self, x, omega, dt):
         # state vector -> [x,xdot,xddot, euler,angular velocities, biases]
         F, _ = self.rpmConversions(omega.flatten())
