@@ -75,9 +75,9 @@ class dataloader:
                     data = bagrdr.message_by_topic(topic)
                     csvfiles.append(data)
         else:
-            csvfiles =  [r"..\data\oval\yawConstant\New folder\rosbag\blackbird-imu.csv",
-                         r"..\data\oval\yawConstant\New folder\rosbag\blackbird-rotor_rpm.csv",
-                         r"..\data\oval\yawConstant\New folder\rosbag\blackbird-state.csv"]
+            csvfiles =  [r"..\data\clover\yawConstant\New folder\rosbag\blackbird-imu.csv",
+                         r"..\data\clover\yawConstant\New folder\rosbag\blackbird-rotor_rpm.csv",
+                         r"..\data\clover\yawConstant\New folder\rosbag\blackbird-state.csv"]
         imu = pd.read_csv(csvfiles[0])
         rotor = pd.read_csv(csvfiles[1])
         mocap = pd.read_csv(csvfiles[2])

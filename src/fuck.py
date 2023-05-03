@@ -492,29 +492,87 @@ class OnlineLearningFusion:
             self.MeasurmentJacobian[0:3, 0:3] = np.eye(3)
             self.MeasurmentJacobian[3:6, 9:12] = np.eye(3)
             return self.MeasurmentJacobian
-
         else: #Returns the dynamics Jacobian
-            u, _ = self.dynamics.rpmConversions(omega.flatten())
+            """
+            Thought:
+            We will fuse acceleration from previous time step. Since we can avoid Rotation matrix in Jacobian
+            """
             jacobian = np.zeros((21, 21))
-            jacobian[0:3, 0:3] = np.eye(3)
-            jacobian[0:3, 3:6] = np.eye(3)*dt
-            jacobian[3:6, 3:6] = np.eye(3)
-            jacobian[3:6, 6:9] = np.eye(3)*dt
-            # jacobian[0:3, 6:9] = np.eye(3)*dt*dt*0.5
+            #Position Jac
+            jacobian[0:3, 0:3] = np.eye(3)          #Previous Pos
+            jacobian[0:3, 3:6] = np.eye(3)*dt       #Previos Vel
+            jacobian[0:3, 6:9] = 0.5*np.eye(3)*dt*dt       #Previos Acc
+            #Velocity Jac
+            jacobian[3:6, 3:6] = np.eye(3)          #Previous Vel
+            jacobian[3:6, 6:9] = np.eye(3)*dt       #Acc
+            
+            #Acceleration Jacobian
+            dg_dpsi = Rdot_psi @ self.state[6:9].reshape(-1,1)
+            dg_dtheta = Rdot_theta @ self.state[6:9].reshape(-1,1)
+            dg_dphi = Rdot_phi @ self.state[6:9].reshape(-1,1)
+            # jacobian[6:9, 8] = dg_dpsi.flatten()
+            # jacobian[6:9, 7] = dg_dtheta.flatten()
+            # jacobian[6:9, 6] = dg_dphi.flatten()
+            jacobian[6:9,6:9] = np.eye(3)
+            jacobian[6:9,15:18] = -np.eye(3)
+            # x,y,z,vx,vy,vz,acc,acc,acc,r,p,y,wx,wy,wz,acb,ac
+            #Acceleration Biases in acceleration
+            dg_dpsi = Rdot_psi @ self.state[15:18].reshape(-1,1)
+            dg_dtheta = Rdot_theta @ self.state[15:18].reshape(-1,1)
+            dg_dphi = Rdot_phi @ self.state[15:18].reshape(-1,1)
+
+
+            
+            # jacobian[6:9, 17] = -dg_dpsi.flatten()
+            # jacobian[6:9, 16] = -dg_dtheta.flatten()
+            # jacobian[6:9, 15] = -dg_dphi.flatten()
+
+            #Angles
+            jacobian[9:12,9:12] = np.eye(3)
+            jacobian[9:12,12:15] = np.eye(3)*dt
+            #Angular Velocity
+            jacobian[12:15,12:15] = np.eye(3)            
+            #Gyro Biases in omega
+            jacobian[12:15, -1] = -1#-dg_dpsi.flatten()
+            jacobian[12:15, -2] = -1#-dg_dtheta.flatten()
+            jacobian[12:15, -3] = -1#-dg_dphi.flatten()
+
+            #Rest all are zero
+            return jacobian
+
+
+        # else: #Returns the dynamics Jacobian
+        #     u, _ = self.dynamics.rpmConversions(omega.flatten())
+        #     jacobian = np.zeros((21, 21))
+        #     jacobian[0:3, 0:3] = np.eye(3)
+        #     jacobian[0:3, 3:6] = np.eye(3)*dt
+        #     jacobian[3:6, 3:6] = np.eye(3)
+        #     jacobian[3:6, 6:9] = np.eye(3)*dt
+        #     # jacobian[0:3, 6:9] = np.eye(3)*dt*dt*0.5
             
             
-            jacobian[6:9, 11] = - Rdot_psi @ np.array([0,0, u.sum()/0.9])
-            jacobian[6:9, 10] = - Rdot_theta @ np.array([0,0, u.sum()/0.9])
-            jacobian[6:9, 9] = - Rdot_phi @ np.array([0,0, u.sum()/0.9])
-            jacobian[9:21, 9:21] = np.eye(12)
-            jacobian[9:12, 12:15] = 0.0 #np.eye(3)*dt
+        #     jacobian[6:9, 11] = - Rdot_psi @ np.array([0,0, u.sum()/0.9])
+        #     jacobian[6:9, 10] = - Rdot_theta @ np.array([0,0, u.sum()/0.9])
+        #     jacobian[6:9, 9] = - Rdot_phi @ np.array([0,0, u.sum()/0.9])
+        #     jacobian[9:21, 9:21] = np.eye(12)
+        #     jacobian[9:12, 12:15] = 0.0 #np.eye(3)*dt
 
-            self.PropogationJacobian = jacobian
-            return self.PropogationJacobian
+        #     self.PropogationJacobian = jacobian
+        #     return self.PropogationJacobian
 
-    def propogateStep(self, state, rpm, dt):
+    def propogateStep2(self, state, rpm, dt):
         J = self.calcJacobian(dt, measurment=0)
         self.state = self.dynamics.propogateDynamics(state, rpm, dt)
+        self.covariance = J@self.covariance@J.T + self.Q
+
+    def propogateStep(self, state, imu, dt):
+        """
+        Propogate Step requires IMU measurement packet, previous step and dt
+        """
+        #propogate acc-  abias + gdt
+        
+        self.state = self.dynamics.propogateIMUDynamics(state,imu,dt)
+        J = self.calcJacobian(dt, measurment=-1)
         self.covariance = J@self.covariance@J.T + self.Q
 
     def measurementModel(self, packet_num = 1):
@@ -612,7 +670,7 @@ class OnlineLearningFusion:
 
 
     def runPipeline(self,  
-                    Adapt = True, sensor_biases = np.array([1000.0, 130, -150.0]), IMU_step = 20, MotionCap_step = 1000, beta = 0.3, alpha = 0.9):
+                    Adapt = False, sensor_biases = np.array([1000.0, 130, -150.0]), IMU_step = 20, MotionCap_step = 1000, beta = 0.3, alpha = 0.9):
         #____________________________Load Data____________________________#
         
         
@@ -655,7 +713,7 @@ class OnlineLearningFusion:
         # self.state[9:12] = Rotation.from_quat(q[:,0].flatten()).as_euler('xyz').reshape(-1,1)
         self.state[18:] = gyro[:,:20].mean(axis=1).reshape(-1,1)
         self.state[15:17] = acc[:2,:20].mean(axis=1).reshape(-1,1)
-        self.state[-3:] = sensor_biases.reshape(-1,1)
+        # self.state[-2:] = sensor_biases.reshape(-1,1)
         self.grav = -np.array([0,0,9.81]).reshape(-1,1)
 
 
@@ -669,16 +727,19 @@ class OnlineLearningFusion:
 
         for i in tqdm.tqdm(range(1,25000)):
             dt = t[i] - t[i-1]
-            self.propogateStep(self.state,rpm[:,i],dt)
-            if i%IMU_step == 0:
+            # self.propogateStep(self.state,rpm[:,i],dt)
+            imuPacket = np.array([float(acc[0,i]),float(acc[1,i]),float(acc[2,i]),
+                                            float(gyro[0,i]),float(gyro[1,i]),float(gyro[2,i])])
+            self.propogateStep(self.state,imuPacket,dt)
+            if i%IMU_step == -1:
 
                 measurementPacket = np.array([float(acc[0,i]),float(acc[1,i]),float(acc[2,i]),
                                             float(gyro[0,i]),float(gyro[1,i]),float(gyro[2,i])])
-                measurementPacket2 = np.array([mocap[0,i],mocap[1,i],mocap[2,i],eulers[i,0],eulers[i,1],eulers[i,2]])
                 self.measurmentStep(measurementPacket, dt, packet_num = self.IMU, Adapt = Adapt, beta =beta)
-                
-                if i%MotionCap_step == 0:
-                    self.measurmentStep(measurementPacket2, dt, packet_num = self.MotionCap, Adapt = Adapt, beta = beta)
+
+            measurementPacket2 = np.array([mocap[0,i],mocap[1,i],mocap[2,i],eulers[i,0],eulers[i,1],eulers[i,2]])                
+            if i%MotionCap_step == 0:
+                self.measurmentStep(measurementPacket2, dt, packet_num = self.MotionCap, Adapt = Adapt, beta = beta)
                 
             self.estimates.append(self.state)
             self.covariances.append(self.covariance)
@@ -692,7 +753,7 @@ class OnlineLearningFusion:
 if __name__ == '__main__':
     learner = OnlineLearningFusion()
     estimate, covariance, ground_truth, gyro, acc, perturbedMocap, eulers = learner.runPipeline(
-    Adapt=True, IMU_step=20, MotionCap_step=200, sensor_biases=np.array([1000.0, 130, -150.0]))
+    Adapt=0, IMU_step=20, MotionCap_step=200, sensor_biases=np.array([1000.0, 130, -150.0]))
     # %matplotlib widget
     fig, axs = plt.subplots(2, 3, figsize=(20, 10))
 
