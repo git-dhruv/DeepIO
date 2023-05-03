@@ -58,7 +58,7 @@ class OnlineLearningFusion:
         self.state = np.zeros((21, 1))
         self.covariance = np.zeros((21, 21))
 
-        self.R = np.eye(3,3)/1e5  #Mocap Measurment Noise
+        self.R = np.eye(3,3)  #Mocap Measurment Noise
         self.R_imu = deepcopy(np.eye(3,3)*1.0)*100  #NN IMU Measrument Noise
 
         self.Q = np.eye(self.covariance.shape[0])/10  #State Update through IMU
@@ -352,9 +352,9 @@ class OnlineLearningFusion:
         self.covariances = []
         self.covariances.append(self.covariance)
         self.groundtruth = np.vstack((Gtruth, eulers.T)).T
-        self.groundtruth = self.groundtruth[:25000, :]
+        # self.groundtruth = self.groundtruth[:25000, :]
 
-        for i in tqdm.tqdm(range(1,25000)):
+        for i in tqdm.tqdm(range(1,self.groundtruth.shape[0])):
 
 
             #---------------- Propogation ---------------#
@@ -386,7 +386,7 @@ class OnlineLearningFusion:
             self.measurmentStep(nnPacket, dt, packet_num = self.NN, Adapt =Adapt, beta = beta)
 
             #----------- Motion Capture ------------#               
-            if i%MotionCap_step == 0:
+            if i%MotionCap_step == 0 or (i<5000):
                 #Packet for Motion Capture
                 measurementPacket2 = np.array([mocap[0,i],mocap[1,i],mocap[2,i]])         
                 #Measurement Update Step
@@ -408,7 +408,7 @@ if __name__ == '__main__':
     learner = OnlineLearningFusion()
     #Run Pipeline
     estimate, covariance, ground_truth, gyro, acc, perturbedMocap, eulers = learner.runPipeline(
-    Adapt=0, IMU_step=20, MotionCap_step=1000, sensor_biases=np.array([1000.0, 130, -150.0]), beta=0.1)
+    Adapt=1, IMU_step=20, MotionCap_step=1000, sensor_biases=np.array([1000.0, 130, -150.0]), beta=0.6)
     #Plots 
     fig, axs = plt.subplots(2, 3, figsize=(20, 10))
 
