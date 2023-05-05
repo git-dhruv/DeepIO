@@ -1,4 +1,4 @@
-data/
+data/*
 VirtualEnv/
 src/ai504_14_neuralODE_sol.ipynb
 Exp/
