@@ -13,6 +13,7 @@ import logging
 from os.path import join
 from tqdm import tqdm
 from utils import *
+from scipy.spatial.transform import Rotation
 import glob
 
 
@@ -30,9 +31,13 @@ class dataloader:
         self.gtruth_df = None
         self.ConcatData = None
 
+        self.bagParsed = dontparse
+        # self.setupLogging()
+        # logging.info("Dataloader Started")
+
     def setupLogging(self):
         log_format = "[%(filename)s]%(lineno)d::%(message)s"
-        logging.basicConfig(level='DEBUG', format=log_format)
+        logging.basicConfig(level='DEBUG', format=log_fzt)
 
     def loadCase(self, case):
         
@@ -70,11 +75,44 @@ class dataloader:
             self.odo_df = pd.concat(
                 [self.odo_df, pd.read_csv(file)], ignore_index=True, axis=0)
 
-    def parseEuler(self, file):
-        if self.imu_df is None:
-            self.imu_df = pd.read_csv(file)
+        if self.bagParsed == 0:
+            bagrdr = bagreader(file)
+            for topic in bagrdr.topics:
+                if topic in relevant_topics:
+                    data = bagrdr.message_by_topic(topic)
+                    csvfiles.append(data)
         else:
-            self.imu_df = pd.concat([self.imu_df, pd.read_csv(file)], ignore_index = True, axis=0)
+            csvfiles =  [r"..\data\clover\yawConstant\New folder\rosbag\blackbird-imu.csv",
+                         r"..\data\clover\yawConstant\New folder\rosbag\blackbird-rotor_rpm.csv",
+                         r"..\data\clover\yawConstant\New folder\rosbag\blackbird-state.csv"]
+        imu = pd.read_csv(csvfiles[0])
+        rotor = pd.read_csv(csvfiles[1])
+        mocap = pd.read_csv(csvfiles[2])
+        imu, rotor, mocap = imu[relevant_headers[0]
+                                ], rotor[relevant_headers[1]], mocap[relevant_headers[2]]
+        
+        R_imu_to_ned = np.array([[-1, 0, 0],
+                                [0, -1, 0],
+                                [0, 0, 1]])
+        R_imutoBody= np.array([[0, -1, 0],
+             [1, 0, 0],
+             [0,0,1]])
+        pos =  mocap[['pose.position.x', 'pose.position.y', 'pose.position.z']].to_numpy()
+        quats = mocap[['pose.orientation.x', 'pose.orientation.y', 'pose.orientation.z', 'pose.orientation.w']].to_numpy()
+        pos = R_imutoBody @ pos.T
+        eulers = []
+        for i in  range(quats.shape[0]):
+            R = R_imutoBody @ Rotation.from_quat(quats[i, :]).as_matrix()
+            quats[i, :] = Rotation.from_matrix(R).as_quat().flatten()
+            quat = Quaternion(scalar = quats[1, -1], vec= quats[i, 0:3])
+            eulers.append(np.flip(quat.euler_angles()))
+        eulers = np.array(eulers)
+        mocap['psi'] = eulers[:, 0]
+        mocap['theta'] = eulers[:, 1]
+        mocap['phi'] = eulers[:, 2]            
+
+
+        return imu, rotor, mocap
 
     def parseGPS(self, file):
         gps = pd.read_csv(file)
@@ -103,7 +141,7 @@ class dataloader:
         self.ConcatData['Time'] = self.ConcatData.index
         self.ConcatData.reset_index(drop=True, inplace=True)
 
-    def perturbStates(self, pos_noise=np.diag([0.0225, 0.0225, 0.0025]), orientation_noise=np.diag([0.1, 0.1, 0.1])):
+    def perturbStates(self, pos_noise=np.diag([0.0225, 0.0225, 0.0025]), orientation_noise=np.diag([1e-7, 1e-7, 1e-7])):
         """
         This function will perturb the states by adding noise to the states.
         Inputs:
