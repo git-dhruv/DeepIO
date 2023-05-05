@@ -9,7 +9,6 @@ import pandas as pd
 import os
 import sys
 
-from bagpy import bagreader
 import logging
 from os.path import join
 from tqdm import tqdm
@@ -20,13 +19,16 @@ import glob
 
 class dataloader:
 
-    def __init__(self, location,dontparse=0):
-        self.folder = os.path.abspath(
-            os.path.expanduser(os.path.expandvars(location)))
+    def __init__(self, location):
+        self.folder = os.path.abspath(os.path.expanduser(os.path.expandvars(location)))
         self.cases = os.listdir(self.folder)
-        self.imu_data = None
-        self.rotor_data = None
-        self.mocap_data = None
+        print(f"[LOADER] Found {len(self.cases)} Directories")
+
+        self.relevantCSV = ['gps.csv','wheels.csv','ms25_euler.csv', 'groundtruth_2012-01-08.csv']
+        self.gps_df = None      #GPS Converted Data
+        self.imu_df = None       #IMU Data
+        self.odo_df = None      #Odometry Data
+        self.gtruth_df = None
         self.ConcatData = None
 
         self.bagParsed = dontparse
@@ -35,38 +37,43 @@ class dataloader:
 
     def setupLogging(self):
         log_format = "[%(filename)s]%(lineno)d::%(message)s"
-        logging.basicConfig(level='DEBUG', format=log_format)
+        logging.basicConfig(level='DEBUG', format=log_fzt)
 
     def loadCase(self, case):
-        for folder in os.listdir(os.path.join(self.folder, case)):
-            # logging.info(f"Loading {folder}")
-            folder = join(join(self.folder, case), folder)
-            bagfile = os.path.join(folder, "rosbag.bag")
-            imu, rotor, mocap = self.parseBagFile(bagfile)
-            if self.imu_data is None:
-                self.imu_data = imu
-                self.rotor_data = rotor
-                self.mocap_data = mocap
-            else:
-                self.imu_data = pd.concat(
-                    [self.imu_data, imu], ignore_index=True, axis=0)
-                self.rotor_data = pd.concat(
-                    [self.rotor_data, rotor], ignore_index=True, axis=0)
-                self.mocap_data = pd.concat(
-                    [self.mocap_data, mocap], ignore_index=True, axis=0)
+        
+        case = os.path.join(self.folder,case)
+        relCSV = [os.path.normpath(os.path.join(case,i)) for i in self.relevantCSV]
+        for file in glob.glob(f'{case}\\'+'*.csv'):
+            file = os.path.normpath(file)
+            if file in relCSV:
+                self.parseCSV(file,relCSV)
+    
+    def parseCSV(self, filename, fileList):
+        #@TODO: Dhruv - Figure out which file is it and call the relevant functions
+        if filename == fileList[1]:
+            self.parseWheel(filename)
+        if filename == fileList[0]:
+            self.parseGPS(filename)
+        if filename == fileList[2]:
+            self.parseEuler(filename)
+        if filename == fileList[3]:
+            self.parseGroundTruth(filename)
 
-    def parseBagFile(self, file):
-        imu_topic = '/blackbird/imu'
-        rpm_topic = '/blackbird/rotor_rpm'
-        mocap_topic = '/blackbird/state'
-        relevant_topics = [imu_topic, rpm_topic, mocap_topic]
 
-        relevant_headers = [['Time', 'angular_velocity.x', 'angular_velocity.y',
-                             'angular_velocity.z', 'linear_acceleration.x', 'linear_acceleration.y', 'linear_acceleration.z'],
-                            ['Time', 'rpm_0', 'rpm_1', 'rpm_2', 'rpm_3'],
-                            ['Time', 'pose.position.x', 'pose.position.y', 'pose.position.z', 'pose.orientation.x', 'pose.orientation.y', 'pose.orientation.z',
-                             'pose.orientation.w']]
-        csvfiles = []
+    def find_csv_filenames(self, path_to_dir, suffix=".csv" ):
+        filenames = os.listdir(path_to_dir)
+        return [ filename for filename in filenames if filename.endswith( suffix ) ]
+    def parseGroundTruth(self, file):
+        if self.gtruth_df is None:    
+            self.gtruth_df = pd.read_csv(file)
+        else:
+            self.gtruth_df = pd.concat([self.gtruth_df, pd.read_csv(file)], ignore_index=True, axis=0)
+    def parseWheel(self, file):
+        if self.odo_df is None:
+            self.odo_df = pd.read_csv(file)
+        else:
+            self.odo_df = pd.concat(
+                [self.odo_df, pd.read_csv(file)], ignore_index=True, axis=0)
 
         if self.bagParsed == 0:
             bagrdr = bagreader(file)
@@ -107,11 +114,15 @@ class dataloader:
 
         return imu, rotor, mocap
 
-    def runPipeline(self):
-        for case in tqdm(self.cases):
-            self.loadCase(case)
-        return self.imu_data, self.rotor_data, self.mocap_data
+    def parseGPS(self, file):
+        gps = pd.read_csv(file)
+        if self.gps_df is None:
+            self.gps_df = gps.iloc[:,[0,3,4,-1]]
+        else:
+            self.gps_df = pd.concat([self.gps_df,gps],ignore_index=True, axis=0)
 
+        
+        
     def homogenizeData(self):
         """
         This function will homogenize the data by interpolating the data, and creating a single dataframe. 
@@ -197,6 +208,15 @@ class dataloader:
         mocap = np.vstack((mcapx, np.vstack((mcapy, mcapz))))
         return gyro, acc, rpm, mocap, q, t
 
+    def runPipeline(self):
+        for case in (self.cases):
+            self.loadCase(case)
+    def getDataFrames(self):
+        return self.gps_df,self.imu_df,self.odo_df,self.gtruth_df
 
 if __name__ == "__main__":
-    print("Kindly Check dataloader_demo.ipynb for demo")
+    directory = r'data/'
+    mn = dataloader(directory)
+    mn.runPipeline()
+    
+    
