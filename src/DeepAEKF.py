@@ -380,7 +380,9 @@ class OnlineLearningFusion:
             neuralInput = torch.tensor(neuralPacket,dtype=torch.float64)
             #Model Forward
             nnPacket = self.model(neuralInput).cpu().detach().numpy()
-            # nnPacket = 0.6*self.state[9:12].reshape(-1,1) + 0.4*nnPacket.reshape(-1,1)
+            # nnPacket = R_imutoBody@Rotation.from_euler('xyz',nnPacket.flatten()).as_matrix()
+            # nnPacket = Rotation.from_matrix(nnPacket).as_euler('xyz')
+            nnPacket = 0.6*self.state[9:12].reshape(-1,1) + 0.4*nnPacket.reshape(-1,1)
 
             #Measurment step
             self.measurmentStep(nnPacket, dt, packet_num = self.NN, Adapt =Adapt, beta = beta)
