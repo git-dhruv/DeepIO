@@ -19,6 +19,7 @@ import torch.nn as nn
 
 #This is not recommended 
 import os
+import tensorflow as tf
 os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 
 
@@ -301,6 +302,10 @@ class OnlineLearningFusion:
     def runPipeline(self,  
                     Adapt = False, sensor_biases = np.array([1000.0, 130, -150.0]), IMU_step = 20, MotionCap_step = 1000, beta = 0.5, alpha = 0.3):
         #____________________________Load Data____________________________#
+
+        OrientationNN = tf.keras.models.load_model(r'src\SavedModels\GRUModelPredictingOrientation.h5')
+        PositionNN = tf.keras.models.load_model(r'src\SavedModels\GRUModelPredictingPosition.h5')
+
         
         
         gyro, acc, rpm, mocap, q, t = self.loadDataUtil.convertDataToIndividualNumpy()
@@ -354,7 +359,7 @@ class OnlineLearningFusion:
         self.groundtruth = np.vstack((Gtruth, eulers.T)).T
         self.groundtruth = self.groundtruth[:25000, :]
 
-        for i in tqdm.tqdm(range(1,25000)):
+        for i in tqdm.tqdm(range(1,15000)):
 
 
             #---------------- Propogation ---------------#
@@ -366,31 +371,48 @@ class OnlineLearningFusion:
                                             float(gyro[0,i]),float(gyro[1,i]),float(gyro[2,i])])
 
             #To remove non linearity in jacobian we need to iterate 10 times in single time frame
-            for j in range(10):
-                self.propogateStep(self.state,imuPacket,dt/10)
+            for j in range(1):
+                self.propogateStep(self.state,imuPacket,dt)
 
 
 
 
-            #---------------- Neural Network ---------------#
+            #---------------- Neural Network1 ---------------#
             #Sensor Packet for Neural Network Propogation
-            neuralPacket = np.array([float(acc[0,i]),float(acc[1,i]),float(acc[2,i]),
-                float(gyro[0,i]),float(gyro[1,i]),float(gyro[2,i]),0,0,-9.8])
-            #Converting to tensor
-            neuralInput = torch.tensor(neuralPacket,dtype=torch.float64)
+            neuralInput = tf.convert_to_tensor(np.array([float(acc[0,i]),float(acc[1,i]),float(acc[2,i]),
+                                                float(gyro[0,i]),float(gyro[1,i]),float(gyro[2,i]),0,0,-9.8]).reshape(1,-1), dtype=tf.float32)
+            
             #Model Forward
-            nnPacket = self.model(neuralInput).cpu().detach().numpy()
+            nnPacket = OrientationNN(neuralInput).numpy()
+            R_temp = R_imutoBody@Rotation.from_euler('xyz',nnPacket.flatten()).as_matrix()
+            nnPacket = Rotation.from_matrix(R_temp).as_euler('xyz')
             # nnPacket = 0.6*self.state[9:12].reshape(-1,1) + 0.4*nnPacket.reshape(-1,1)
 
             #Measurment step
             self.measurmentStep(nnPacket, dt, packet_num = self.NN, Adapt =Adapt, beta = beta)
+
+
+            #---------------- Neural Network2 ---------------#
+            #Sensor Packet for Neural Network Propogation
+            
+            neuralInput = tf.convert_to_tensor(np.array([float(acc[0,i]),float(acc[1,i]),float(acc[2,i]),
+                                                float(gyro[0,i]),float(gyro[1,i]),float(gyro[2,i]),0,0,-9.8,float(self.state[9]),
+                                                float(self.state[10]),float(self.state[11])]).reshape(1,-1), dtype=tf.float32)
+            
+            #Model Forward
+            nnPacket = R_imutoBody@PositionNN(neuralInput).numpy().reshape(-1,1)
+            
+            # nnPacket = 0.6*self.state[9:12].reshape(-1,1) + 0.4*nnPacket.reshape(-1,1)
+
+            #Measurment step
+            self.measurmentStep(nnPacket, dt, packet_num = self.MotionCap, Adapt =Adapt, beta = beta)
 
             #----------- Motion Capture ------------#               
             if i%MotionCap_step == 0 or (i<5000):
                 #Packet for Motion Capture
                 measurementPacket2 = np.array([mocap[0,i],mocap[1,i],mocap[2,i]])         
                 #Measurement Update Step
-                self.measurmentStep(measurementPacket2, dt, packet_num = self.MotionCap, Adapt = 1-Adapt, beta = beta)
+                self.measurmentStep(measurementPacket2, dt, packet_num = self.MotionCap, Adapt = Adapt, beta = beta)
 
 
             #----------- Loggers -----------------#                
@@ -404,8 +426,9 @@ class OnlineLearningFusion:
 
 
 if __name__ == '__main__':
+    dir = r"C:\Users\aniru\Documents\01_UPenn\04_ESE6500\02_Homework\05_Project\DeepIO\data\clover"
     #Define the class
-    learner = OnlineLearningFusion()
+    learner = OnlineLearningFusion(dataDir=dir)
     #Run Pipeline
     estimate, covariance, ground_truth, gyro, acc, perturbedMocap, eulers = learner.runPipeline(
     Adapt=1, IMU_step=20, MotionCap_step=1000, sensor_biases=np.array([1000.0, 130, -150.0]), beta=0.1)

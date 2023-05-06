@@ -21,6 +21,7 @@ import tqdm
 from copy import deepcopy
 from estimate_rot import ukfPipeline
 from complementary import *
+import tensorflow as tf
 
 class OnlineLearningFusion:
     def __init__(self,dataDir = r'data\clover'):
@@ -237,6 +238,9 @@ class OnlineLearningFusion:
                     Adapt = True, sensor_biases = np.array([1000.0, 130, -150.0]), IMU_step = 20, MotionCap_step = 1000, beta = 0.3, alpha = 0.9):
         #____________________________Load Data____________________________#
         
+        OrientationNN = tf.keras.models.load_model(r'SavedModels\GRUModelPredictingOrientation.h5')
+        PositionNN = tf.keras.models.load_model(r'SavedModels\GRUModelPredictingPosition.h5')
+        
         
         gyro, acc, rpm, mocap, q, t = self.loadDataUtil.convertDataToIndividualNumpy()
         perturbedMocap = self.loadDataUtil.perturbStates()[:,1:]
@@ -301,29 +305,6 @@ class OnlineLearningFusion:
         self.groundtruth = np.vstack((Gtruth, eulers.T)).T
         self.groundtruth = self.groundtruth[:25000, :]
 
-        # sol = ukfPipeline(acc[:,:15000], gyro[:,:15000], t[:15000])
-        # stateVector = sol.runPipeline()
-        # # roll, pitch, yaw are numpy arrays of length T
-        # r,p,y = sol.quat2rpy(stateVector[:4, :])
-        # # r,p = sol.calibrationOutput()
-        # R = Rotation.from_quat([q[0,0],q[1,0],q[2,0],q[3,0]])
-        # r = [0]*15000
-        # p = [0]*15000
-        # for i in tqdm.tqdm(range(1, 15000)):
-        #     dt = (t[i] - t[i - 1])
-        #     acc[-1,i] *= -1
-        #     R = complementary_filter_update(R, gyro[:,i-1], acc[:,i], dt)
-        #     p[i] = R.as_euler('XYZ', degrees=False)[0]
-        #     p[i] = R.as_euler('XYZ', degrees=False)[1]
-            
-
-        # plt.plot(r)
-        # plt.plot(eulers[:15000,0])
-        # # plt.plot(y)
-        # plt.show()
-        # plt.figure()
-        # plt.plot(p);plt.plot(eulers[:15000,1]);plt.show()
-        # raise NotImplementedError
 
 
         for i in tqdm.tqdm(range(1,25000)):
